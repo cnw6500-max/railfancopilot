@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <!-- Allow HTTP cleartext traffic only for RailroadRadio.net (audio streams served over HTTP) -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">railroadradio.net</domain>
-    </domain-config>
-</network-security-config>

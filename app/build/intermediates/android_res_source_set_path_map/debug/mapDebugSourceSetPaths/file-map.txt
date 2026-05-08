@@ -1,8 +1,0 @@
-com.railfancopilot.app-pngs-0 C:\Users\cnw65\Downloads\RailFanApp\app\build\generated\res\pngs\debug
-com.railfancopilot.app-resValues-1 C:\Users\cnw65\Downloads\RailFanApp\app\build\generated\res\resValues\debug
-com.railfancopilot.app-updated_navigation_xml-2 C:\Users\cnw65\Downloads\RailFanApp\app\build\generated\updated_navigation_xml\debug
-com.railfancopilot.app-packageDebugResources-3 C:\Users\cnw65\Downloads\RailFanApp\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
-com.railfancopilot.app-packageDebugResources-4 C:\Users\cnw65\Downloads\RailFanApp\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
-com.railfancopilot.app-debug-5 C:\Users\cnw65\Downloads\RailFanApp\app\build\intermediates\merged_res\debug\mergeDebugResources
-com.railfancopilot.app-debug-6 C:\Users\cnw65\Downloads\RailFanApp\app\src\debug\res
-com.railfancopilot.app-main-7 C:\Users\cnw65\Downloads\RailFanApp\app\src\main\res
