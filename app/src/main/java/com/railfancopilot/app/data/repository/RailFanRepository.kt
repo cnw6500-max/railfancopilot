@@ -42,24 +42,19 @@ class RailFanRepository(private val context: Context) {
     suspend fun getLiveTrains(lat: Double, lon: Double, railroad: String? = null, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> {
         return try {
             val response = NetworkModule.amtrakApi.getTrains()
-            val distBuf = FloatArray(1)
             response.values.flatten()
-                .filter { it.lat != 0.0 && it.lon != 0.0 }
-                .filter { train ->
-                    Location.distanceBetween(lat, lon, train.lat, train.lon, distBuf)
-                    distBuf[0] / 1609.34 <= radiusMiles
-                }
+                .filter { it.lat != null && it.lon != null && it.lat != 0.0 && it.lon != 0.0 }
                 .map { train ->
                     val timely = train.trainTimely.uppercase()
                     TrainLocation(
                         id = "amtrak-${train.trainNum}",
                         symbol = "${train.routeName} #${train.trainNum}",
                         railroad = Railroad.AMTRAK,
-                        latitude = train.lat,
-                        longitude = train.lon,
-                        speedMph = train.velocity,
-                        headingDegrees = train.heading,
-                        etaMinutes = computeEtaMinutes(lat, lon, train.lat, train.lon, train.velocity, train.heading),
+                        latitude = train.lat!!,
+                        longitude = train.lon!!,
+                        speedMph = train.velocity?.toInt() ?: 0,
+                        headingDegrees = GtfsRtFetcher.cardinalToDegrees(train.heading ?: ""),
+                        etaMinutes = computeEtaMinutes(lat, lon, train.lat!!, train.lon!!, train.velocity?.toInt() ?: 0, GtfsRtFetcher.cardinalToDegrees(train.heading ?: "")),
                         status = when {
                             timely == "ON TIME" || timely.contains("EARLY") -> TrainStatus.ON_TIME
                             timely.contains("LATE") -> TrainStatus.DELAYED
@@ -74,7 +69,7 @@ class RailFanRepository(private val context: Context) {
                 }
         } catch (e: Exception) {
             android.util.Log.e("RailFanRepo", "Amtrak API failed: ${e.message}", e)
-            emptyList()
+            emptyList<TrainLocation>()
         }
     }
 
@@ -229,7 +224,7 @@ class RailFanRepository(private val context: Context) {
                     TrainLocation(
                         id = "mbta-${vehicle.id}",
                         symbol = "MBTA $lineName",
-                        railroad = Railroad.AMTRAK,   // closest visual style (blue); displayed as "MBTA" via symbol
+                        railroad = Railroad.OTHER,    // groups with other commuter feeds under the Commuter chip
                         latitude = attr.latitude,
                         longitude = attr.longitude,
                         speedMph = speedMph,

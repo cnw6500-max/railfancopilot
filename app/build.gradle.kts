@@ -21,8 +21,8 @@ android {
         applicationId = "com.railfancopilot.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "2.1.0"
+        versionCode = 20
+        versionName = "2.1.2"
 
         val mapsKey       = localProps.getProperty("MAPS_API_KEY")            ?: ""
         val anthropicKey  = localProps.getProperty("ANTHROPIC_API_KEY")       ?: ""

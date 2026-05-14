@@ -1,5 +1,7 @@
 package com.railfancopilot.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,7 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,10 +29,38 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 
+private data class RosterLink(
+    val name: String,
+    val shortName: String,
+    val url: String,
+    val color: Color
+)
+
+private val rosterLinks = listOf(
+    // Class One
+    RosterLink("BNSF Railway",                "BNSF",  "https://www.dieselshop.us/BNSF.HTML",    Color(0xFFFF6600)),
+    RosterLink("Union Pacific",               "UP",    "https://www.dieselshop.us/UP.HTML",      Color(0xFFFFCC00)),
+    RosterLink("CSX Transportation",          "CSX",   "https://www.dieselshop.us/CSX.HTML",     Color(0xFF0057A8)),
+    RosterLink("Norfolk Southern",            "NS",    "http://www.nsdash9.com/roster.html",     Color(0xFF999999)),
+    RosterLink("Canadian National",           "CN",    "https://www.dieselshop.us/CN.HTML",      Color(0xFFCC0000)),
+    RosterLink("Canadian Pacific Kansas City","CPKC",  "https://www.dieselshop.us/CP.HTML",      Color(0xFF8B0000)),
+    // Passenger
+    RosterLink("Amtrak",                      "AMTK",  "https://www.dieselshop.us/AMTRAK.HTML",  Color(0xFF1E3A8A)),
+    RosterLink("Metra",                       "METRA", "https://www.dieselshop.us/METRA.HTML",   Color(0xFF005DAA)),
+    RosterLink("LIRR",                        "LIRR",  "https://www.dieselshop.us/LIRR.HTML",    Color(0xFF004B87)),
+    RosterLink("Metro North",                 "MNR",   "https://www.dieselshop.us/MNR.HTML",     Color(0xFF00693E)),
+    RosterLink("MBTA",                        "MBTA",  "https://www.dieselshop.us/MBTA.HTML",    Color(0xFF003DA5)),
+    RosterLink("SEPTA",                       "SEPTA", "https://www.dieselshop.us/SEPTA.HTML",   Color(0xFF0057A8)),
+    RosterLink("Caltrain",                    "CT",    "https://www.dieselshop.us/CALTRAIN.HTML",Color(0xFF8B0000)),
+    // Browse all
+    RosterLink("Browse all rosters",          "All",   "https://www.dieselshop.us",              RailBlue),
+)
+
 @Composable
 fun EncyclopediaScreen(vm: RailFanViewModel) {
     val locos by vm.locomotives.collectAsState()
     val isLoadingLocos by vm.isLoadingLocos.collectAsState()
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
     var selectedLoco by remember { mutableStateOf<LocomotiveEntry?>(null) }
 
@@ -120,6 +152,57 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
                                 Text(desc, color = TextSecondary, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.weight(1f))
                             }
                         }
+                    }
+                }
+            }
+
+            // Railroad Rosters section — hidden while searching
+            if (searchQuery.isBlank()) {
+                item {
+                    SectionHeader("Railroad Rosters")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(BgInput)
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, null, tint = RailBlue, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("Powered by DieselShop.us", color = RailBlue, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("Tap a railroad to view full roster in browser", color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+                items(rosterLinks) { roster ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 3.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(BgCard)
+                            .border(0.5.dp, Border, RoundedCornerShape(12.dp))
+                            .clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(roster.url)))
+                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(roster.color)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(roster.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(roster.shortName, color = TextMuted, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.OpenInBrowser, null, tint = RailBlue, modifier = Modifier.size(18.dp))
                     }
                 }
             }

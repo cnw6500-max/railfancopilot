@@ -269,11 +269,13 @@ fun MapScreen(vm: RailFanViewModel) {
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip("All", selectedRailroad == null) { vm.setRailroadFilter(null) }
-                    Railroad.values().take(6).forEach { rr ->
-                        FilterChip(rr.displayName.take(8), selectedRailroad == rr) {
-                            vm.setRailroadFilter(if (selectedRailroad == rr) null else rr)
+                    Railroad.values()
+                        .filter { it != Railroad.OTHER }
+                        .forEach { rr ->
+                            FilterChip(rr.displayName.take(8), selectedRailroad == rr) {
+                                vm.setRailroadFilter(if (selectedRailroad == rr) null else rr)
+                            }
                         }
-                    }
                     FilterChip("Commuter", selectedRailroad == Railroad.OTHER) {
                         vm.setRailroadFilter(if (selectedRailroad == Railroad.OTHER) null else Railroad.OTHER)
                     }

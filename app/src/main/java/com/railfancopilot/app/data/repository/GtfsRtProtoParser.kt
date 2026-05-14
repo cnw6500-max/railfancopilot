@@ -16,7 +16,7 @@ import java.nio.ByteOrder
  * Proto field reference (gtfs-realtime.proto):
  *   FeedMessage  { entity            = 2 }
  *   FeedEntity   { id                = 1; vehicle = 4 }
- *   VehiclePos   { trip              = 1; position = 2; current_status = 4 }
+ *   VehiclePos   { trip=1; vehicle=2(new)/position=2(old); position=3(new); current_status=6(new)/4(old) }
  *   TripDesc     { route_id          = 5 }
  *   Position     { latitude=1; longitude=2; bearing=3; speed=5 }  (all float/wire-5)
  *   VehicleStop  { INCOMING_AT=0, STOPPED_AT=1, IN_TRANSIT_TO=2 }
@@ -76,11 +76,20 @@ internal object GtfsRtProtoParser {
             val (field, wire) = r.tag()
             when {
                 field == 1 && wire == 2 -> routeId = parseRouteId(r.bytes())
+                // field 2 = VehicleDescriptor (newer spec) OR Position (older spec)
+                // field 3 = Position (newer spec, most agencies)
                 field == 2 && wire == 2 -> {
+                    val p = parsePosition(r.bytes())
+                    if (p[0] != 0f || p[1] != 0f) { lat = p[0]; lon = p[1]; bearing = p[2]; speedMs = p[3] }
+                }
+                field == 3 && wire == 2 -> {
                     val p = parsePosition(r.bytes())
                     lat = p[0]; lon = p[1]; bearing = p[2]; speedMs = p[3]
                 }
-                field == 4 && wire == 0 -> status = r.varint().toInt()
+                // field 4 = current_status (older spec) OR current_stop_sequence (newer spec)
+                // field 6 = current_status (newer spec, most agencies)
+                field == 4 && wire == 0 -> if (status == 2) status = r.varint().toInt()
+                field == 6 && wire == 0 -> status = r.varint().toInt()
                 else -> r.skip(wire)
             }
         }

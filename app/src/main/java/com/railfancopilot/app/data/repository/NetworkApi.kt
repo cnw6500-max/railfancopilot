@@ -1,6 +1,7 @@
 package com.railfancopilot.app.data.repository
 
 import com.railfancopilot.app.BuildConfig
+import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -47,12 +48,12 @@ interface AmtrakApiService {
 }
 
 data class AmtrakTrainJson(
-    val trainNum: Int = 0,
+    val trainNum: String = "",      // API sometimes returns alphanumeric e.g. "b5150"
     val routeName: String = "",
-    val lat: Double = 0.0,
-    val lon: Double = 0.0,
-    val heading: Int = 0,
-    val velocity: Int = 0,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val heading: String? = null,    // cardinal direction e.g. "N", "NE", or numeric string
+    val velocity: Double? = null,   // API returns float mph e.g. 72.899
     val trainTimely: String = "",
     val stations: List<AmtrakStationJson> = emptyList(),
     val trainState: String = ""
@@ -203,7 +204,7 @@ object NetworkModule {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build()
         )
-        .addConverterFactory(GsonConverterFactory.create())
+        .addConverterFactory(GsonConverterFactory.create(GsonBuilder().setLenient().create()))
         .build()
         .create(AmtrakApiService::class.java)
 

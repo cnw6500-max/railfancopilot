@@ -59,11 +59,20 @@ internal object GtfsRtProtoParser {
             val (field, wire) = r.tag()
             when {
                 field == 1 && wire == 2 -> routeId = parseRouteId(r.bytes())
+                // field 2 = position (older GTFS-RT spec / some feeds)
                 field == 2 && wire == 2 -> {
+                    val p = parsePosition(r.bytes())
+                    if (p[0] != 0f || p[1] != 0f) { lat = p[0]; lon = p[1]; bearing = p[2]; speedMs = p[3] }
+                }
+                // field 3 = position (current GTFS-RT spec)
+                field == 3 && wire == 2 -> {
                     val p = parsePosition(r.bytes())
                     lat = p[0]; lon = p[1]; bearing = p[2]; speedMs = p[3]
                 }
-                field == 4 && wire == 0 -> status = r.varint().toInt()
+                // field 4 = current_status (older spec) — only apply if field 6 hasn't set it
+                field == 4 && wire == 0 -> if (status == 2) status = r.varint().toInt()
+                // field 6 = current_status (current GTFS-RT spec)
+                field == 6 && wire == 0 -> status = r.varint().toInt()
                 else -> r.skip(wire)
             }
         }

@@ -1,6 +1,7 @@
 package com.railfancopilot.app
 
 import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -10,9 +11,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -22,6 +25,7 @@ import androidx.navigation.compose.*
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.rememberPermissionState
 import com.railfancopilot.app.ui.screens.*
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
@@ -74,7 +78,45 @@ fun RailFanApp() {
             Manifest.permission.CAMERA
         )
     )
-    LaunchedEffect(Unit) { permissions.launchMultiplePermissionRequest() }
+    var showPermissionDisclosure by remember { mutableStateOf(!permissions.allPermissionsGranted) }
+
+    if (showPermissionDisclosure) {
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = androidx.compose.ui.graphics.Color(0xFF1A1A2E),
+            title = {
+                Text("Before we begin", color = com.railfancopilot.app.ui.theme.TextPrimary,
+                    fontWeight = FontWeight.Medium)
+            },
+            text = {
+                androidx.compose.foundation.layout.Column(
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Railfan Copilot collects and uses the following data:",
+                        color = com.railfancopilot.app.ui.theme.TextSecondary, fontSize = 13.sp
+                    )
+                    listOf(
+                        "📍 Location — to show nearby trains on the map and sort scanner feeds by distance. Location data is not stored or shared.",
+                        "🔔 Notifications — to alert you when trains are approaching your location.",
+                        "📷 Camera — to take photos for the AI locomotive identifier."
+                    ).forEach { line ->
+                        Text(line, color = com.railfancopilot.app.ui.theme.TextSecondary, fontSize = 12.sp,
+                            lineHeight = 18.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPermissionDisclosure = false
+                    permissions.launchMultiplePermissionRequest()
+                }) {
+                    Text("Continue", color = com.railfancopilot.app.ui.theme.RailBlue,
+                        fontWeight = FontWeight.Medium)
+                }
+            }
+        )
+    }
 
     val hasLocationPermission = permissions.permissions.any {
         (it.permission == Manifest.permission.ACCESS_FINE_LOCATION ||
@@ -83,6 +125,34 @@ fun RailFanApp() {
     }
     LaunchedEffect(hasLocationPermission) {
         if (hasLocationPermission) vm.startLocationTracking()
+    }
+
+    // Background location: show prominent disclosure first, then request
+    var showBgLocationDisclosure by remember { mutableStateOf(false) }
+    val bgLocationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        rememberPermissionState(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    } else null
+
+    // Once foreground location is granted, prompt for background (if not already granted)
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission &&
+            bgLocationPermission != null &&
+            !bgLocationPermission.status.isGranted
+        ) {
+            showBgLocationDisclosure = true
+        }
+    }
+
+    if (showBgLocationDisclosure) {
+        BackgroundLocationDisclosureDialog(
+            onContinue = {
+                showBgLocationDisclosure = false
+                bgLocationPermission?.launchPermissionRequest()
+            },
+            onDismiss = {
+                showBgLocationDisclosure = false
+            }
+        )
     }
 
     val onboardingShown by vm.onboardingShown.collectAsState()
@@ -127,6 +197,58 @@ fun RailFanApp() {
             )
         }
     }
+}
+
+/**
+ * Prominent disclosure dialog required by Google Play User Data policy.
+ * Must be shown before requesting ACCESS_BACKGROUND_LOCATION.
+ * Explains clearly why background location is needed and how it is used.
+ */
+@Composable
+fun BackgroundLocationDisclosureDialog(
+    onContinue: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.LocationOn,
+                contentDescription = null,
+                tint = RailBlue
+            )
+        },
+        title = {
+            Text(
+                "Background Location",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            Text(
+                "RailFan Copilot uses your location in the background to send you proximity alerts " +
+                "when trains approach your saved locations — even when the app is closed or not in use.\n\n" +
+                "On the next screen, select \"Allow all the time\" to enable this feature. " +
+                "You can change this at any time in your device Settings.",
+                fontSize = 14.sp,
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onContinue,
+                colors = ButtonDefaults.buttonColors(containerColor = RailBlue)
+            ) {
+                Text("Continue", color = androidx.compose.ui.graphics.Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Not Now", color = TextMuted)
+            }
+        }
+    )
 }
 
 @Composable

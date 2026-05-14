@@ -57,19 +57,20 @@ class RailFanRepository(
     suspend fun getLiveTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> =
         try {
             RailFanApi.getAmtrakTrains().values.flatten()
-                .filter { it.lat != 0.0 && it.lon != 0.0 }
-                .filter { distanceMiles(lat, lon, it.lat, it.lon) <= radiusMiles }
+                .filter { it.lat != null && it.lon != null && it.lat != 0.0 && it.lon != 0.0 }
                 .map { train ->
                     val timely = train.trainTimely.uppercase()
+                    val speedMph = train.velocity?.toInt() ?: 0
+                    val heading = cardinalToDegrees(train.heading ?: "")
                     TrainLocation(
                         id            = "amtrak-${train.trainNum}",
                         symbol        = "${train.routeName} #${train.trainNum}",
                         railroad      = Railroad.AMTRAK,
-                        latitude      = train.lat,
-                        longitude     = train.lon,
-                        speedMph      = train.velocity,
-                        headingDegrees = train.heading,
-                        etaMinutes    = computeEtaMinutes(lat, lon, train.lat, train.lon, train.velocity, train.heading),
+                        latitude      = train.lat!!,
+                        longitude     = train.lon!!,
+                        speedMph      = speedMph,
+                        headingDegrees = heading,
+                        etaMinutes    = computeEtaMinutes(lat, lon, train.lat!!, train.lon!!, speedMph, heading),
                         status = when {
                             timely == "ON TIME" || timely.contains("EARLY") -> TrainStatus.ON_TIME
                             timely.contains("LATE") -> TrainStatus.DELAYED
@@ -133,7 +134,7 @@ class RailFanRepository(
                     TrainLocation(
                         id             = "mbta-${vehicle.id}",
                         symbol         = "MBTA $lineName",
-                        railroad       = Railroad.AMTRAK,
+                        railroad       = Railroad.OTHER,
                         latitude       = attr.latitude,
                         longitude      = attr.longitude,
                         speedMph       = speedMph,

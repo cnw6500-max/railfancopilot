@@ -35,12 +35,12 @@ data class AnthropicContent(
 
 @Serializable
 data class AmtrakTrainJson(
-    val trainNum: Int = 0,
+    val trainNum: String = "",      // API sometimes returns alphanumeric e.g. "b5150"
     val routeName: String = "",
-    val lat: Double = 0.0,
-    val lon: Double = 0.0,
-    val heading: Int = 0,
-    val velocity: Int = 0,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val heading: String? = null,    // cardinal direction e.g. "N", "NE", or numeric string
+    val velocity: Double? = null,   // API returns float mph e.g. 72.899
     val trainTimely: String = "",
     val stations: List<AmtrakStationJson> = emptyList(),
     val trainState: String = ""

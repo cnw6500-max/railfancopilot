@@ -10,3 +10,8 @@ app/build
 .cxx
 local.properties
 *.keystore
+*.jks
+
+# Release outputs — large binaries, not needed in source control
+app/release/
+shared/build/
