@@ -1,0 +1,12 @@
+# Add your API keys here. This file is NOT committed to version control.
+# Get a Google Maps key from: https://console.cloud.google.com
+MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+
+# Get an Anthropic key from: https://console.anthropic.com
+ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY
+
+# Get a Broadcastify key from: https://www.broadcastify.com/api/
+BROADCASTIFY_API_KEY=YOUR_BROADCASTIFY_API_KEY
+
+# Android SDK path (Android Studio sets this automatically)
+# sdk.dir=/Users/YOUR_USERNAME/Library/Android/sdk
