@@ -10,6 +10,11 @@ settings:
   SWIFT_VERSION: "5.9"
   IPHONEOS_DEPLOYMENT_TARGET: "16.0"
 
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.0.0
+
 targets:
   iosApp:
     type: application
@@ -20,6 +25,8 @@ targets:
       - framework: ../shared/build/XCFrameworks/release/shared.xcframework
         embed: true
         codeSign: true
+      - package: Firebase
+        product: FirebaseFirestore
     info:
       path: iosApp/Info.plist
       properties:
