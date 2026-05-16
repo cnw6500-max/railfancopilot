@@ -1,0 +1,190 @@
+package com.railfancopilot.app.data.repository
+
+import android.location.Location
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.railfancopilot.app.data.models.CommunityReport
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import java.util.UUID
+
+/**
+ * Reads and writes community sightings from the shared Firestore "sightings" collection.
+ * This is the same collection the iOS app uses, so sightings are cross-platform.
+ *
+ * Document schema (mirrors iOS FirestoreSighting):
+ *   railroad      : String
+ *   trainSymbol   : String
+ *   location      : String  (human-readable location name)
+ *   notes         : String
+ *   latitude      : Double
+ *   longitude     : Double
+ *   reporterName  : String
+ *   timestampMs   : Double (millis since epoch)
+ *   upvotes       : Long
+ */
+object FirestoreCommunityRepo {
+
+    private val db = FirebaseFirestore.getInstance()
+    private const val COLLECTION = "sightings"
+
+    // ── Real-time flow of sightings filtered by distance ─────────────────────
+
+    fun getSightingsFlow(
+        userLat: Double,
+        userLon: Double,
+        radiusMiles: Double = 100.0
+    ): Flow<List<CommunityReport>> = callbackFlow {
+
+        var registration: ListenerRegistration? = null
+
+        registration = db.collection(COLLECTION)
+            .orderBy("timestampMs", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(100)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("FirestoreRepo", "Listen failed: ${error.message}", error)
+                    return@addSnapshotListener
+                }
+
+                val results = mutableListOf<CommunityReport>()
+                snapshot?.documents?.forEach { doc ->
+                    try {
+                        val railroad     = doc.getString("railroad")     ?: "Unknown"
+                        val trainSymbol  = doc.getString("trainSymbol")  ?: ""
+                        val location     = doc.getString("location")     ?: "Unknown location"
+                        val notes        = doc.getString("notes")        ?: ""
+                        val lat          = doc.getDouble("latitude")     ?: 0.0
+                        val lon          = doc.getDouble("longitude")    ?: 0.0
+                        val reporter     = doc.getString("reporterName") ?: "Railfan"
+                        val tsMs         = doc.getDouble("timestampMs")?.toLong()
+                                         ?: doc.getLong("timestampMs")
+                                         ?: System.currentTimeMillis()
+                        val upvotes      = (doc.getLong("upvotes") ?: 0L).toInt()
+
+                        // Client-side distance filter
+                        val distResults  = FloatArray(1)
+                        Location.distanceBetween(userLat, userLon, lat, lon, distResults)
+                        val distMiles    = distResults[0] / 1609.34
+
+                        if (distMiles <= radiusMiles) {
+                            // Build the display text: combine symbol, location, notes
+                            val text = buildString {
+                                if (trainSymbol.isNotBlank() && trainSymbol != "Unknown") {
+                                    append(trainSymbol)
+                                    append(" spotted at ")
+                                }
+                                append(location)
+                                if (notes.isNotBlank()) {
+                                    append(" — ")
+                                    append(notes)
+                                }
+                            }
+
+                            results += CommunityReport(
+                                id              = doc.id,
+                                userId          = reporter,
+                                userName        = reporter,
+                                latitude        = lat,
+                                longitude       = lon,
+                                text            = text,
+                                trainSymbol     = trainSymbol.ifBlank { null },
+                                railroad        = railroad,
+                                tags            = "[]",
+                                timestampMs     = tsMs,
+                                upvotes         = upvotes,
+                                isVerified      = false,
+                                localPhotoPath  = null
+                            )
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("FirestoreRepo", "Parse error on ${doc.id}: ${e.message}")
+                    }
+                }
+
+                trySend(results.sortedByDescending { it.timestampMs })
+            }
+
+        awaitClose { registration?.remove() }
+    }
+
+    // ── Flow with no location filter (show all, sorted by time) ──────────────
+
+    fun getAllSightingsFlow(): Flow<List<CommunityReport>> = callbackFlow {
+        val registration = db.collection(COLLECTION)
+            .orderBy("timestampMs", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(50)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                val results = snapshot?.documents?.mapNotNull { doc ->
+                    try {
+                        val railroad     = doc.getString("railroad")     ?: "Unknown"
+                        val trainSymbol  = doc.getString("trainSymbol")  ?: ""
+                        val location     = doc.getString("location")     ?: "Unknown location"
+                        val notes        = doc.getString("notes")        ?: ""
+                        val lat          = doc.getDouble("latitude")     ?: 0.0
+                        val lon          = doc.getDouble("longitude")    ?: 0.0
+                        val reporter     = doc.getString("reporterName") ?: "Railfan"
+                        val tsMs         = doc.getDouble("timestampMs")?.toLong()
+                                         ?: doc.getLong("timestampMs")
+                                         ?: System.currentTimeMillis()
+                        val upvotes      = (doc.getLong("upvotes") ?: 0L).toInt()
+
+                        val text = buildString {
+                            if (trainSymbol.isNotBlank() && trainSymbol != "Unknown") {
+                                append(trainSymbol); append(" spotted at ")
+                            }
+                            append(location)
+                            if (notes.isNotBlank()) { append(" — "); append(notes) }
+                        }
+
+                        CommunityReport(
+                            id = doc.id, userId = reporter, userName = reporter,
+                            latitude = lat, longitude = lon, text = text,
+                            trainSymbol = trainSymbol.ifBlank { null }, railroad = railroad,
+                            tags = "[]", timestampMs = tsMs, upvotes = upvotes,
+                            isVerified = false, localPhotoPath = null
+                        )
+                    } catch (_: Exception) { null }
+                } ?: emptyList()
+                trySend(results)
+            }
+        awaitClose { registration.remove() }
+    }
+
+    // ── Submit a new sighting ─────────────────────────────────────────────────
+
+    fun submitSighting(
+        lat: Double,
+        lon: Double,
+        text: String,
+        trainSymbol: String?,
+        railroad: String?,
+        reporterName: String,
+        location: String = "Unknown location"
+    ) {
+        val doc = hashMapOf(
+            "railroad"     to (railroad ?: "Unknown"),
+            "trainSymbol"  to (trainSymbol ?: "Unknown"),
+            "location"     to location,
+            "notes"        to text,
+            "latitude"     to lat,
+            "longitude"    to lon,
+            "reporterName" to reporterName,
+            "timestampMs"  to System.currentTimeMillis().toDouble(),
+            "upvotes"      to 0L
+        )
+        db.collection(COLLECTION).add(doc)
+            .addOnFailureListener { e ->
+                android.util.Log.e("FirestoreRepo", "submitSighting failed: ${e.message}", e)
+            }
+    }
+
+    // ── Upvote a sighting ─────────────────────────────────────────────────────
+
+    fun upvote(sightingId: String) {
+        db.collection(COLLECTION).document(sightingId)
+            .update("upvotes", com.google.firebase.firestore.FieldValue.increment(1))
+    }
+}

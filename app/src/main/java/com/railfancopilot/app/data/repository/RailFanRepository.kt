@@ -381,41 +381,33 @@ Read all visible text, logos, and signage in the image carefully before answerin
         }
     }
 
-    // ── Community reports ─────────────────────────────────────────────────────
+    // ── Community reports — backed by shared Firestore "sightings" collection ──
+    // Sightings are shared cross-platform with the iOS app in real time.
 
     fun getRecentReportsFlow(): Flow<List<CommunityReport>> =
-        db.communityReportDao().getRecentFlow()
+        FirestoreCommunityRepo.getAllSightingsFlow()
 
-    /** Live reactive query within a bounding box derived from [radiusMiles]. */
-    fun getNearbyReportsFlow(lat: Double, lon: Double, radiusMiles: Double): Flow<List<CommunityReport>> {
-        val delta = radiusMiles / 69.0        // 1° lat ≈ 69 miles
-        val deltaLon = radiusMiles / (69.0 * Math.cos(Math.toRadians(lat)))
-        return db.communityReportDao().getNearbyFlow(
-            minLat = lat - delta, maxLat = lat + delta,
-            minLon = lon - deltaLon, maxLon = lon + deltaLon
-        )
-    }
+    /** Live Firestore feed filtered client-side to [radiusMiles] around the user. */
+    fun getNearbyReportsFlow(lat: Double, lon: Double, radiusMiles: Double): Flow<List<CommunityReport>> =
+        FirestoreCommunityRepo.getSightingsFlow(lat, lon, radiusMiles)
 
     fun getAllReportsFlow(): Flow<List<CommunityReport>> =
-        db.communityReportDao().getAllFlow()
+        FirestoreCommunityRepo.getAllSightingsFlow()
 
     suspend fun addReport(
         lat: Double, lon: Double, text: String,
         trainSymbol: String?, railroad: String?, tags: List<String>,
         localPhotoPath: String? = null
     ) {
-        val report = CommunityReport(
-            id = UUID.randomUUID().toString(),
-            userId = "local_user",
-            userName = "You",
-            latitude = lat, longitude = lon, text = text,
-            trainSymbol = trainSymbol, railroad = railroad,
-            tags = gson.toJson(tags),
-            timestampMs = System.currentTimeMillis(),
-            upvotes = 0, isVerified = false,
-            localPhotoPath = localPhotoPath
+        // Post to Firestore so iOS users see it too
+        FirestoreCommunityRepo.submitSighting(
+            lat = lat, lon = lon,
+            text = text,
+            trainSymbol = trainSymbol,
+            railroad = railroad,
+            reporterName = "Railfan",   // TODO: wire up real user name from settings
+            location = "Unknown location"
         )
-        db.communityReportDao().insert(report)
     }
 
     // ── AAR frequency reference ───────────────────────────────────────────────

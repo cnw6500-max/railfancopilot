@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
 }
 
 val localProps = Properties()
@@ -105,6 +106,9 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.play.review)
     implementation(libs.play.billing.ktx)
+    // Firebase / Firestore — shared community backend with iOS
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
     // GTFS-Realtime vehicle positions are parsed with a built-in zero-dependency
     // protobuf reader (GtfsRtProtoParser) — no external bindings library needed.
     debugImplementation(libs.androidx.ui.tooling)

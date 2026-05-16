@@ -1,34 +1,13 @@
 import SwiftUI
 
-// ── Sample data model ─────────────────────────────────────────────────────────
-struct Sighting: Identifiable {
-    let id = UUID()
-    let railroad: String
-    let trainSymbol: String
-    let location: String
-    let notes: String
-    let distanceMiles: Double
-    let minutesAgo: Int
-    let reporterName: String
-}
-
-// ── Main View ─────────────────────────────────────────────────────────────────
 struct CommunityView: View {
     @ObservedObject var vm: RailFanViewModel
-    @State private var distanceFilter: Double = 50
+    @StateObject private var firestore = FirestoreManager.shared
+    @State private var distanceFilter: Double = 100
     @State private var showAddSighting = false
 
-    // Sample sightings — will be replaced by backend data
-    private let sampleSightings: [Sighting] = [
-        Sighting(railroad: "BNSF",   trainSymbol: "QCHILA",    location: "Galesburg, IL",       notes: "ES44AC leading, 180 cars",         distanceMiles: 12,  minutesAgo: 5,   reporterName: "TrainFan_IL"),
-        Sighting(railroad: "UP",     trainSymbol: "MSKCC-12",  location: "North Platte, NE",     notes: "Heritage unit on point!",           distanceMiles: 24,  minutesAgo: 18,  reporterName: "NebraskaRails"),
-        Sighting(railroad: "Amtrak", trainSymbol: "California Zephyr", location: "Denver, CO",  notes: "On time, Superliner consist",       distanceMiles: 38,  minutesAgo: 32,  reporterName: "AmtrakWatcher"),
-        Sighting(railroad: "CSX",    trainSymbol: "Q410",      location: "Cincinnati, OH",       notes: "Double stack intermodal, 2 units",  distanceMiles: 45,  minutesAgo: 47,  reporterName: "OhioRailfan"),
-        Sighting(railroad: "NS",     trainSymbol: "19G",        location: "Harrisburg, PA",      notes: "Manifest freight, SD70ACe",         distanceMiles: 62,  minutesAgo: 61,  reporterName: "PennRailsPA"),
-    ]
-
-    var filteredSightings: [Sighting] {
-        sampleSightings.filter { $0.distanceMiles <= distanceFilter }
+    var filteredSightings: [FirestoreSighting] {
+        firestore.sightings.filter { $0.distanceMiles <= distanceFilter }
     }
 
     var body: some View {
@@ -64,17 +43,28 @@ struct CommunityView: View {
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
                         .padding(.horizontal)
 
-                        // Sighting count
+                        // Count
                         HStack {
                             Text("\(filteredSightings.count) sightings within \(Int(distanceFilter)) miles")
                                 .font(.system(size: 13))
                                 .foregroundColor(.textMuted)
                             Spacer()
+                            if firestore.isLoading {
+                                ProgressView().scaleEffect(0.7)
+                            }
                         }
                         .padding(.horizontal)
 
-                        // Sighting list
-                        if filteredSightings.isEmpty {
+                        // Error
+                        if let err = firestore.errorMessage {
+                            Text(err)
+                                .font(.system(size: 13))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal)
+                        }
+
+                        // Sightings
+                        if filteredSightings.isEmpty && !firestore.isLoading {
                             VStack(spacing: 12) {
                                 Image(systemName: "binoculars")
                                     .font(.system(size: 40))
@@ -82,7 +72,7 @@ struct CommunityView: View {
                                 Text("No sightings nearby")
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundColor(.textPrimary)
-                                Text("Increase the distance filter or be the first to report a sighting!")
+                                Text("Be the first to report a sighting!")
                                     .font(.system(size: 13))
                                     .foregroundColor(.textMuted)
                                     .multilineTextAlignment(.center)
@@ -90,7 +80,7 @@ struct CommunityView: View {
                             .padding(40)
                         } else {
                             ForEach(filteredSightings) { sighting in
-                                SightingCard(sighting: sighting)
+                                FirestoreSightingCard(sighting: sighting)
                                     .padding(.horizontal)
                             }
                         }
@@ -115,16 +105,25 @@ struct CommunityView: View {
                     }
                 }
             }
+            .onAppear {
+                let lat = vm.userLocation?.latitude ?? 41.8781
+                let lon = vm.userLocation?.longitude ?? -87.6298
+                firestore.startListening(lat: lat, lon: lon, radiusMiles: distanceFilter)
+            }
+            .onDisappear {
+                firestore.stopListening()
+            }
             .sheet(isPresented: $showAddSighting) {
-                AddSightingView(isPresented: $showAddSighting)
+                AddSightingView(vm: vm, isPresented: $showAddSighting)
             }
         }
     }
 }
 
-// ── Sighting Card ─────────────────────────────────────────────────────────────
-struct SightingCard: View {
-    let sighting: Sighting
+// ── Firestore Sighting Card ───────────────────────────────────────────────────
+struct FirestoreSightingCard: View {
+    let sighting: FirestoreSighting
+    @StateObject private var firestore = FirestoreManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -161,10 +160,12 @@ struct SightingCard: View {
                     .foregroundColor(.textMuted)
             }
 
-            Text(sighting.notes)
-                .font(.system(size: 13))
-                .foregroundColor(.textSecondary)
-                .lineLimit(2)
+            if !sighting.notes.isEmpty {
+                Text(sighting.notes)
+                    .font(.system(size: 13))
+                    .foregroundColor(.textSecondary)
+                    .lineLimit(2)
+            }
 
             HStack {
                 Image(systemName: "person.circle")
@@ -174,8 +175,30 @@ struct SightingCard: View {
                     .font(.system(size: 12))
                     .foregroundColor(.textMuted)
                 Spacer()
+
+                // Upvote button
                 Button {
-                    // Share action
+                    if let id = sighting.id {
+                        firestore.upvote(sightingId: id)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hand.thumbsup")
+                            .font(.system(size: 12))
+                        Text("\(sighting.upvotes)")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(.railBlue)
+                }
+
+                // Share button
+                Button {
+                    let text = "🚂 \(sighting.railroad) \(sighting.trainSymbol) spotted at \(sighting.location)! #RailfanCopilot"
+                    let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+                    UIApplication.shared.connectedScenes
+                        .compactMap { $0 as? UIWindowScene }
+                        .first?.windows.first?.rootViewController?
+                        .present(av, animated: true)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
@@ -207,13 +230,17 @@ struct SightingCard: View {
 
 // ── Add Sighting Sheet ────────────────────────────────────────────────────────
 struct AddSightingView: View {
+    @ObservedObject var vm: RailFanViewModel
     @Binding var isPresented: Bool
     @State private var railroad = ""
     @State private var trainSymbol = ""
     @State private var location = ""
     @State private var notes = ""
+    @State private var reporterName = ""
+    @State private var isSubmitting = false
+    @State private var errorMessage: String? = nil
 
-    private let railroads = ["BNSF", "UP", "CSX", "NS", "CN", "CP", "Amtrak", "Metra", "MBTA", "LIRR", "Metro-North", "SEPTA", "Other"]
+    private let railroads = ["BNSF", "UP", "CSX", "NS", "CN", "CP", "Amtrak", "Metra", "MBTA", "LIRR", "Metro-North", "SEPTA", "Caltrain", "Sound Transit", "Other"]
 
     var body: some View {
         NavigationView {
@@ -222,6 +249,18 @@ struct AddSightingView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
+
+                        // Reporter name
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Your Name / Handle").font(.system(size: 13)).foregroundColor(.textMuted)
+                            TextField("e.g. TrainFan_IL", text: $reporterName)
+                                .textFieldStyle(.plain)
+                                .foregroundColor(.textPrimary)
+                                .padding(12)
+                                .background(Color.bgCard)
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
+                        }
 
                         // Railroad picker
                         VStack(alignment: .leading, spacing: 8) {
@@ -276,20 +315,29 @@ struct AddSightingView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
                         }
 
-                        // Submit button
-                        Button {
-                            // Submit sighting
-                            isPresented = false
-                        } label: {
-                            Text("Submit Sighting")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(railroad.isEmpty ? Color.railBlueDark : Color.railBlueMid)
-                                .cornerRadius(12)
+                        if let err = errorMessage {
+                            Text(err).font(.system(size: 13)).foregroundColor(.orange)
                         }
-                        .disabled(railroad.isEmpty)
+
+                        // Submit
+                        Button {
+                            submit()
+                        } label: {
+                            Group {
+                                if isSubmitting {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Text("Submit Sighting")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(railroad.isEmpty ? Color.railBlueDark : Color.railBlueMid)
+                            .cornerRadius(12)
+                        }
+                        .disabled(railroad.isEmpty || isSubmitting)
 
                         Spacer(minLength: 40)
                     }
@@ -308,5 +356,31 @@ struct AddSightingView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private func submit() {
+        isSubmitting = true
+        errorMessage = nil
+        let lat = vm.userLocation?.latitude ?? 0.0
+        let lon = vm.userLocation?.longitude ?? 0.0
+        let name = reporterName.isEmpty ? "Railfan" : reporterName
+
+        Task {
+            do {
+                try await FirestoreManager.shared.submitSighting(
+                    railroad: railroad,
+                    trainSymbol: trainSymbol.isEmpty ? "Unknown" : trainSymbol,
+                    location: location.isEmpty ? "Unknown location" : location,
+                    notes: notes,
+                    lat: lat,
+                    lon: lon,
+                    reporterName: name
+                )
+                isPresented = false
+            } catch {
+                errorMessage = "Failed to submit: \(error.localizedDescription)"
+                isSubmitting = false
+            }
+        }
     }
 }
