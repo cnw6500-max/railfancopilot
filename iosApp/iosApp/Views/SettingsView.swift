@@ -41,6 +41,51 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Color.bgCard)
 
+                    // Approach Notifications
+                    Section(header: Text("Approach Notifications").foregroundColor(.textMuted)) {
+                        Toggle(isOn: $vm.approachNotificationsEnabled) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "bell.badge.fill")
+                                    .foregroundColor(.railBlue)
+                                    .frame(width: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Train Approach Alerts")
+                                        .foregroundColor(.textPrimary)
+                                    Text("Pro feature")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.yellow)
+                                }
+                            }
+                        }
+                        .tint(.railBlue)
+                        .disabled(!vm.isPremium)
+                        .onChange(of: vm.approachNotificationsEnabled) { enabled in
+                            if enabled {
+                                NotificationManager.shared.requestPermission()
+                            }
+                        }
+
+                        if vm.approachNotificationsEnabled && vm.isPremium {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Alert when train is within")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.textMuted)
+                                    Spacer()
+                                    Text("\(vm.approachEtaThreshold) min")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.railBlue)
+                                }
+                                Slider(value: Binding(
+                                    get: { Double(vm.approachEtaThreshold) },
+                                    set: { vm.approachEtaThreshold = Int($0) }
+                                ), in: 5...30, step: 5)
+                                .tint(.railBlue)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.bgCard)
+
                     // Achievements
                     Section {
                         NavigationLink {

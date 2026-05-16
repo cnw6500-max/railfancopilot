@@ -43,6 +43,11 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var showFreight   = true
     @Published var isPremium     = false
 
+    // ── Approach Notifications ────────────────────────────────────────────────
+    @Published var approachEtaThreshold: Int = 10  // minutes
+    @Published var approachNotificationsEnabled: Bool = false
+    private var notifiedTrainIds: Set<String> = []
+
     // ── Init ──────────────────────────────────────────────────────────────────
     override init() {
         helper = IOSRailFanHelper(
@@ -94,6 +99,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 Task { @MainActor in
                     self.trains = trains as? [TrainLocation] ?? []
                     self.isLoadingTrains = false
+                    self.checkApproachNotifications()
                 }
             },
             onError: { [weak self] _ in
@@ -193,6 +199,40 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         if let data = try? JSONEncoder().encode(codable) {
             UserDefaults.standard.set(data, forKey: "savedLocations")
         }
+    }
+
+    // ── Approach Notifications ────────────────────────────────────────────────
+    func checkApproachNotifications() {
+        guard approachNotificationsEnabled, isPremium else { return }
+        guard !savedLocations.isEmpty, !trains.isEmpty else { return }
+
+        for location in savedLocations {
+            let locCL = CLLocation(latitude: location.latitude, longitude: location.longitude)
+
+            for train in trains {
+                let trainCL = CLLocation(latitude: train.latitude, longitude: train.longitude)
+                let distanceMeters = locCL.distance(from: trainCL)
+                let distanceMiles = distanceMeters / 1609.34
+                let speedMph = Double(train.speedMph)
+                guard speedMph > 5 else { continue }
+                let etaMinutes = Int((distanceMiles / speedMph) * 60)
+
+                if etaMinutes <= approachEtaThreshold && etaMinutes > 0 {
+                    let key = "\(train.id)-\(location.id)"
+                    if !notifiedTrainIds.contains(key) {
+                        notifiedTrainIds.insert(key)
+                        NotificationManager.shared.sendApproachNotification(
+                            trainSymbol: train.symbol,
+                            railroad: train.railroad.displayName,
+                            etaMinutes: etaMinutes,
+                            locationName: location.name
+                        )
+                    }
+                }
+            }
+        }
+        // Clear old notifications after 30 minutes
+        if notifiedTrainIds.count > 100 { notifiedTrainIds.removeAll() }
     }
 
     // ── Premium ───────────────────────────────────────────────────────────────
