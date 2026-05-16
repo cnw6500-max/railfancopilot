@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -13,11 +14,16 @@ kotlin {
         }
     }
 
-    // iOS targets — skipped automatically on non-Mac hosts via
-    // kotlin.native.ignoreDisabledTargets=true in gradle.properties
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
+    val xcf = XCFramework("shared")
+    iosX64 {
+        binaries.framework { baseName = "shared"; xcf.add(this) }
+    }
+    iosArm64 {
+        binaries.framework { baseName = "shared"; xcf.add(this) }
+    }
+    iosSimulatorArm64 {
+        binaries.framework { baseName = "shared"; xcf.add(this) }
+    }
 
     sourceSets {
         commonMain.dependencies {

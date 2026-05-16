@@ -2,6 +2,8 @@ import SwiftUI
 import MapKit
 import shared
 
+extension SavedLocationShared: @retroactive Identifiable {}
+
 struct SavedLocationsView: View {
     @ObservedObject var vm: RailFanViewModel
     @State private var showAddSheet = false

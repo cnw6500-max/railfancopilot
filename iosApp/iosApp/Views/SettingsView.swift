@@ -41,6 +41,22 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Color.bgCard)
 
+                    // Achievements
+                    Section {
+                        NavigationLink {
+                            AchievementsView()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "trophy.fill")
+                                    .foregroundColor(.yellow)
+                                Text("Achievements")
+                                    .foregroundColor(.textPrimary)
+                                    .font(.system(size: 15, weight: .medium))
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.bgCard)
+
                     // Premium
                     Section {
                         NavigationLink {

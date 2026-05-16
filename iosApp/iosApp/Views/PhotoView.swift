@@ -143,6 +143,19 @@ struct PhotoView: View {
                             .padding(24)
                         }
 
+
+
+
+                        // Sun Angle Predictor
+                        SunAngleCard(
+                            elevation: vm.sunInfo.map { String(format: "%.1f°", $0.elevationDegrees) },
+                            azimuth: vm.sunInfo.map { String(format: "%.1f°", $0.azimuthDegrees) },
+                            goldenStart: vm.sunInfo?.goldenHourStart,
+                            goldenEnd: vm.sunInfo?.goldenHourEnd,
+                            isGoldenHour: vm.sunInfo?.isGoldenHour ?? false
+                        )
+                        .padding(.horizontal)
+
                         Spacer(minLength: 40)
                     }
                     .padding(.top)
@@ -177,6 +190,66 @@ struct PhotoView: View {
         guard let img = selectedImage,
               let jpeg = img.jpegData(compressionQuality: 0.7) else { return }
         vm.identifyLoco(jpegData: jpeg)
+    }
+}
+
+// ── Sun Angle Card ────────────────────────────────────────────────────────────
+struct SunAngleCard: View {
+    let elevation: String?
+    let azimuth: String?
+    let goldenStart: String?
+    let goldenEnd: String?
+    let isGoldenHour: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "sun.max.fill")
+                    .foregroundColor(.yellow)
+                Text("Sun Angle Predictor")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.textPrimary)
+            }
+
+            if let elev = elevation, let az = azimuth, let gs = goldenStart {
+                HStack(spacing: 0) {
+                    SunStatCell(value: elev, label: "Elevation")
+                    Divider().background(Color.border).frame(height: 36)
+                    SunStatCell(value: az, label: "Azimuth")
+                    Divider().background(Color.border).frame(height: 36)
+                    SunStatCell(value: gs, label: "Golden Start")
+                }
+                if isGoldenHour {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles").foregroundColor(.yellow)
+                        Text("Golden hour — perfect lighting!")
+                            .font(.system(size: 12)).foregroundColor(.yellow)
+                    }
+                } else if let ge = goldenEnd {
+                    Text("Golden hour: \(gs) – \(ge)")
+                        .font(.system(size: 12)).foregroundColor(.textMuted)
+                }
+            } else {
+                Text("Enable location to see sun angle data")
+                    .font(.system(size: 13)).foregroundColor(.textMuted)
+            }
+        }
+        .padding(16)
+        .background(Color.bgCard)
+        .cornerRadius(14)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+    }
+}
+
+struct SunStatCell: View {
+    let value: String
+    let label: String
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value).font(.system(size: 14, weight: .semibold)).foregroundColor(.railBlue)
+            Text(label).font(.system(size: 11)).foregroundColor(.textMuted)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

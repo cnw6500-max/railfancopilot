@@ -2,6 +2,15 @@ import SwiftUI
 import MapKit
 import shared
 
+// ── Swift conformances for KMP types ─────────────────────────────────────────
+extension TrainLocation: @retroactive Identifiable {}
+
+extension CLLocationCoordinate2D: @retroactive Equatable {
+    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
+        lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
+}
+
 struct MapView: View {
     @ObservedObject var vm: RailFanViewModel
     @State private var region = MKCoordinateRegion(
@@ -219,13 +228,13 @@ struct TrainDetailSheet: View {
                         DetailRow(label: "Origin",      value: train.origin)
                         DetailRow(label: "Destination", value: train.destination)
                         if let eta = train.etaMinutes {
-                            DetailRow(label: "ETA", value: "\(eta) min")
+                            DetailRow(label: "ETA", value: "\(eta.intValue) min")
                         }
                         if let mp = train.milepost {
-                            DetailRow(label: "Milepost", value: mp)
+                            DetailRow(label: "Milepost", value: String(format: "%.1f", mp.doubleValue))
                         }
-                        if !train.subdivision.isEmpty {
-                            DetailRow(label: "Subdivision", value: train.subdivision)
+                        if let sub = train.subdivision, !sub.isEmpty {
+                            DetailRow(label: "Subdivision", value: sub)
                         }
                     }
                     .cardStyle()
