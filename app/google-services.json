@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "792859086359",
+    "project_id": "railfan-copilot",
+    "storage_bucket": "railfan-copilot.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:792859086359:android:2382e26ecfdb6e2ede5652",
+        "android_client_info": {
+          "package_name": "com.railfancopilot.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAc-u5HUDSYzIPe3yPze5iGHHI9qgtDb6A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
