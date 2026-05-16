@@ -3,16 +3,23 @@ import StoreKit
 
 struct UpgradeView: View {
     @ObservedObject var vm: RailFanViewModel
+    @StateObject private var store = StoreManager.shared
     @Environment(\.dismiss) var dismiss
-    @State private var isPurchasing = false
 
-    private let features: [(icon: String, title: String, desc: String)] = [
-        ("cpu",                   "AI Symbol Decoder",       "Decode any freight or passenger train symbol with detailed route and consist info."),
-        ("sparkles",              "AI Loco Identifier",      "Photograph any locomotive and get instant model, railroad, and feature identification."),
-        ("person.3.fill",         "Community Reports",       "Share sightings and get real-time alerts from nearby railfans."),
-        ("bookmark.fill",         "Saved Locations",         "Save unlimited railfan spots with proximity alerts."),
-        ("arrow.triangle.2.circlepath", "Live Updates",      "Auto-refresh trains every 60 seconds."),
-        ("sun.max.fill",          "Golden Hour Calculator",  "Know the best light times for photography at any location."),
+    private let freeFeatures: [(icon: String, title: String)] = [
+        ("map.fill",                          "Live Train Map"),
+        ("antenna.radiowaves.left.and.right", "Railroad Scanner Feeds"),
+        ("book.fill",                         "Locomotive Encyclopedia"),
+        ("trophy.fill",                       "Achievements"),
+    ]
+
+    private let proFeatures: [(icon: String, title: String, desc: String)] = [
+        ("cpu",              "AI Symbol Decoder",      "Decode any freight or passenger train symbol with full route and consist info."),
+        ("sparkles",         "AI Loco Identifier",     "Photograph any locomotive for instant model, railroad, and era identification."),
+        ("person.3.fill",    "Community Reports",      "Share sightings and browse real-time reports from nearby railfans."),
+        ("bookmark.fill",    "Unlimited Saved Spots",  "Save unlimited railfan locations. Free tier includes 3."),
+        ("bell.badge.fill",  "Approach Notifications", "Get alerted when trains approach your saved locations."),
+        ("sun.max.fill",     "Sun Angle Predictor",    "Know the golden hour window for perfect rail photography."),
     ]
 
     var body: some View {
@@ -21,97 +28,174 @@ struct UpgradeView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
+
                     // Hero
                     VStack(spacing: 10) {
                         Image(systemName: "star.circle.fill")
                             .font(.system(size: 64))
                             .foregroundColor(.yellow)
-                        Text("Railfan Copilot Premium")
-                            .font(.system(size: 24, weight: .bold))
+                            .shadow(color: Color.yellow.opacity(0.4), radius: 16)
+                        Text("Railfan Copilot Pro")
+                            .font(.system(size: 26, weight: .bold))
                             .foregroundColor(.textPrimary)
-                        Text("Everything a serious railfan needs in one app.")
+                        Text("Everything a serious railfan needs.")
                             .font(.system(size: 15))
                             .foregroundColor(.textMuted)
-                            .multilineTextAlignment(.center)
                     }
                     .padding(.top, 32)
 
-                    // Features
-                    VStack(spacing: 2) {
-                        ForEach(features, id: \.title) { feat in
-                            HStack(alignment: .top, spacing: 14) {
-                                Image(systemName: feat.icon)
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.railBlue)
-                                    .frame(width: 28)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(feat.title)
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(.textPrimary)
-                                    Text(feat.desc)
+                    // Free vs Pro comparison
+                    HStack(alignment: .top, spacing: 12) {
+                        // Free column
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("FREE")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.textMuted)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                            Divider().background(Color.border)
+                            ForEach(freeFeatures, id: \.title) { f in
+                                HStack(spacing: 8) {
+                                    Image(systemName: f.icon)
+                                        .foregroundColor(.railBlue)
                                         .font(.system(size: 13))
+                                        .frame(width: 18)
+                                    Text(f.title)
+                                        .font(.system(size: 12))
                                         .foregroundColor(.textSecondary)
-                                        .lineSpacing(3)
                                 }
-                            }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
-                            if feat.title != features.last?.title {
-                                Divider().background(Color.border).padding(.leading, 58)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                Divider().background(Color.border)
                             }
                         }
+                        .background(Color.bgCard)
+                        .cornerRadius(12)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.border, lineWidth: 0.5))
+
+                        // Pro column
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("PRO")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.yellow)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                            Divider().background(Color.border)
+                            ForEach(proFeatures, id: \.title) { f in
+                                HStack(spacing: 8) {
+                                    Image(systemName: f.icon)
+                                        .foregroundColor(.yellow)
+                                        .font(.system(size: 13))
+                                        .frame(width: 18)
+                                    Text(f.title)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.textSecondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                Divider().background(Color.border)
+                            }
+                        }
+                        .background(Color.bgCard)
+                        .cornerRadius(12)
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.yellow.opacity(0.5), lineWidth: 1))
                     }
-                    .background(Color.bgCard)
-                    .cornerRadius(14)
-                    .overlay(RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.border, lineWidth: 0.5))
                     .padding(.horizontal)
 
                     if vm.isPremium {
                         // Already premium
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 36))
+                                .font(.system(size: 48))
                                 .foregroundColor(.green)
-                            Text("Premium Active")
-                                .font(.system(size: 18, weight: .semibold))
+                            Text("Pro Active")
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.textPrimary)
                             Text("Thank you for supporting Railfan Copilot!")
                                 .font(.system(size: 14))
                                 .foregroundColor(.textMuted)
                         }
                         .padding(24)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.bgCard)
+                        .cornerRadius(16)
+                        .padding(.horizontal)
+
                     } else {
-                        // Purchase
+                        // Purchase section
                         VStack(spacing: 12) {
+
+                            // Price badge
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 2) {
+                                    Text(store.formattedPrice)
+                                        .font(.system(size: 32, weight: .bold))
+                                        .foregroundColor(.textPrimary)
+                                    Text("One-time purchase · No subscription")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.textMuted)
+                                }
+                                Spacer()
+                            }
+
+                            // Error message
+                            if let err = store.purchaseError {
+                                Text(err)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.orange)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                            }
+
+                            // Buy button
                             Button {
-                                purchase()
+                                Task {
+                                    let success = await store.purchase()
+                                    if success { vm.unlockPremium() }
+                                }
                             } label: {
                                 Group {
-                                    if isPurchasing {
+                                    if store.isPurchasing {
                                         ProgressView().tint(.white)
                                     } else {
-                                        Text("Upgrade — $4.99")
-                                            .font(.system(size: 17, weight: .bold))
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "star.fill")
+                                                .foregroundColor(.yellow)
+                                            Text("Upgrade to Pro — \(store.formattedPrice)")
+                                                .font(.system(size: 16, weight: .bold))
+                                        }
                                     }
                                 }
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.railBlueMid)
+                                .background(
+                                    LinearGradient(colors: [Color.railBlueMid, Color.railBlue],
+                                                   startPoint: .leading, endPoint: .trailing)
+                                )
                                 .cornerRadius(14)
                             }
-                            .disabled(isPurchasing)
+                            .disabled(store.isPurchasing)
 
-                            Button { restorePurchases() } label: {
+                            // Restore button
+                            Button {
+                                Task {
+                                    let restored = await store.restorePurchases()
+                                    if restored { vm.unlockPremium() }
+                                }
+                            } label: {
                                 Text("Restore Purchases")
                                     .font(.system(size: 14))
                                     .foregroundColor(.railBlue)
                             }
 
-                            Text("One-time purchase. No subscription.")
-                                .font(.system(size: 12))
+                            Text("Payment will be charged to your Apple ID account at confirmation of purchase.")
+                                .font(.system(size: 11))
                                 .foregroundColor(.textMuted)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
                         }
                         .padding(.horizontal)
                     }
@@ -120,26 +204,16 @@ struct UpgradeView: View {
                 }
             }
         }
-        .navigationTitle("Upgrade")
+        .navigationTitle("Upgrade to Pro")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.bgPrimary, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-    }
-
-    private func purchase() {
-        isPurchasing = true
-        // TODO: integrate StoreKit 2 with your product ID
-        // For now, simulate unlock for testing
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            vm.unlockPremium()
-            isPurchasing = false
-        }
-    }
-
-    private func restorePurchases() {
-        Task {
-            try? await AppStore.sync()
-            // Re-check entitlements
+        .task {
+            await store.loadProducts()
+            // Check if already purchased
+            if await store.checkEntitlement() {
+                vm.unlockPremium()
+            }
         }
     }
 }
