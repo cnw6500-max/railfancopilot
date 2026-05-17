@@ -22,21 +22,11 @@ android {
         applicationId = "com.railfancopilot.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "2.1.3"
+        versionCode = 22
+        versionName = "2.2.0"
 
-        val mapsKey       = localProps.getProperty("MAPS_API_KEY")            ?: ""
-        val anthropicKey  = localProps.getProperty("ANTHROPIC_API_KEY")       ?: ""
-        val metraUser     = localProps.getProperty("METRA_FEED_USER")          ?: ""
-        val metraPass     = localProps.getProperty("METRA_FEED_PASSWORD")      ?: ""
-        val mtaKey        = localProps.getProperty("MTA_API_KEY")              ?: ""
-        val fiveElevenKey = localProps.getProperty("FIVE_ELEVEN_KEY")          ?: ""
+        val mapsKey = localProps.getProperty("MAPS_API_KEY") ?: ""
         manifestPlaceholders["MAPS_API_KEY"] = mapsKey
-        buildConfigField("String", "ANTHROPIC_API_KEY",  "\"$anthropicKey\"")
-        buildConfigField("String", "METRA_FEED_USER",    "\"$metraUser\"")
-        buildConfigField("String", "METRA_FEED_PASSWORD","\"$metraPass\"")
-        buildConfigField("String", "MTA_API_KEY",        "\"$mtaKey\"")
-        buildConfigField("String", "FIVE_ELEVEN_KEY",    "\"$fiveElevenKey\"")
     }
 
     signingConfigs {
@@ -106,9 +96,11 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.play.review)
     implementation(libs.play.billing.ktx)
-    // Firebase / Firestore — shared community backend with iOS
+    // Firebase — Firestore (shared community feed with iOS) + Functions (API proxy)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.functions)
+    implementation(libs.coroutines.play.services)
     // GTFS-Realtime vehicle positions are parsed with a built-in zero-dependency
     // protobuf reader (GtfsRtProtoParser) — no external bindings library needed.
     debugImplementation(libs.androidx.ui.tooling)
