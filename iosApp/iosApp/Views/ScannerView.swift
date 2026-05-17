@@ -39,35 +39,25 @@ struct ScannerView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
 
-                    // Web player button
-                    Button {
-                        webURL = "https://www.railroadradio.net/mobile.php"
-                        showWebPlayer = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .foregroundColor(.railBlue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Live Scanner Streams")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.textPrimary)
-                                Text("Powered by RailroadRadio.net · tap to open")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.textMuted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12))
-                                .foregroundColor(.textMuted)
-                        }
-                        .padding(14)
-                        .background(Color.bgCard)
-                        .cornerRadius(12)
-                        .overlay(RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.railBlueMid, lineWidth: 0.5))
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
+                    // Web player buttons
+                    VStack(spacing: 8) {
+                        ScannerLinkButton(
+                            title: "Broadcastify — Live Rail Feeds",
+                            subtitle: "Largest railroad scanner network",
+                            icon: "antenna.radiowaves.left.and.right",
+                            url: "https://www.broadcastify.com/listen/ctid/2",
+                            webURL: $webURL, showWebPlayer: $showWebPlayer
+                        )
+                        ScannerLinkButton(
+                            title: "Railroad Radio",
+                            subtitle: "railroadradio.net live streams",
+                            icon: "radio",
+                            url: "https://railroadradio.net",
+                            webURL: $webURL, showWebPlayer: $showWebPlayer
+                        )
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
 
                     // AAR Frequency list
                     List(filteredChannels, id: \.id) { channel in
@@ -144,6 +134,46 @@ struct WebPlayerSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+struct ScannerLinkButton: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let url: String
+    @Binding var webURL: String
+    @Binding var showWebPlayer: Bool
+
+    var body: some View {
+        Button {
+            webURL = url
+            showWebPlayer = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .foregroundColor(.railBlue)
+                    .font(.system(size: 18))
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.textPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.textMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(.textMuted)
+            }
+            .padding(14)
+            .background(Color.bgCard)
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.railBlueMid, lineWidth: 0.5))
+        }
     }
 }
 
