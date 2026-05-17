@@ -237,6 +237,7 @@ struct AddSightingView: View {
     @State private var location = ""
     @State private var notes = ""
     @State private var reporterName = ""
+    private var effectiveReporterName: String { reporterName.isEmpty ? vm.userName : reporterName }
     @State private var isSubmitting = false
     @State private var errorMessage: String? = nil
 
@@ -363,7 +364,7 @@ struct AddSightingView: View {
         errorMessage = nil
         let lat = vm.userLocation?.latitude ?? 0.0
         let lon = vm.userLocation?.longitude ?? 0.0
-        let name = reporterName.isEmpty ? "Railfan" : reporterName
+        let name = effectiveReporterName
 
         Task {
             do {

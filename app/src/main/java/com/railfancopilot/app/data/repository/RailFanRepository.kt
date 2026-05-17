@@ -68,7 +68,7 @@ class RailFanRepository(private val context: Context) {
                     )
                 }
         } catch (e: Exception) {
-            android.util.Log.e("RailFanRepo", "Amtrak API failed: ${e.message}", e)
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Amtrak API failed: ${e.message}", e)
             emptyList<TrainLocation>()
         }
     }
@@ -116,70 +116,55 @@ class RailFanRepository(private val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            android.util.Log.e("RailFanRepo", "SEPTA API failed: ${e.message}", e)
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "SEPTA API failed: ${e.message}", e)
             emptyList()
         }
     }
 
-    // ── Metra (Chicago area — GTFS-RT, free credentials at metra.com/developers) ─
-    //    Register at https://developer.metra.com — add METRA_FEED_USER and
-    //    METRA_FEED_PASSWORD to local.properties.
+    // ── Metra (Chicago area — GTFS-RT via Cloud Functions proxy) ─────────────
 
     suspend fun getMetraTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> {
-        val token = BuildConfig.METRA_FEED_USER
-        if (token.isBlank()) return emptyList()
-        return GtfsRtFetcher.fetch(
-            tag         = "Metra",
-            url         = "https://gtfspublic.metrarr.com/gtfs/public/positions",
-            headers     = mapOf("Authorization" to "Bearer $token"),
-            railroad    = Railroad.OTHER,
-            agencyLabel = "Metra",
-            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
-            etaFn   = ::computeEtaMinutes
-        )
+        return try {
+            val bytes = BackendFunctionsClient.getMetraPositions()
+            GtfsRtFetcher.parseAndFilter(bytes, Railroad.OTHER, "Metra", lat, lon, radiusMiles, ::computeEtaMinutes)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Metra failed: ${e.message}", e)
+            emptyList()
+        }
     }
 
-    // ── MTA LIRR + Metro-North (New York — GTFS-RT, free key at api.mta.info) ──
-    //    Register at https://api.mta.info — add MTA_API_KEY to local.properties.
+    // ── MTA LIRR + Metro-North (New York — GTFS-RT via Cloud Functions proxy) ──
 
     suspend fun getMtaLirrTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> {
-        return GtfsRtFetcher.fetch(
-            tag         = "LIRR",
-            url         = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr",
-            headers     = emptyMap(),
-            railroad    = Railroad.OTHER,
-            agencyLabel = "LIRR",
-            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
-            etaFn   = ::computeEtaMinutes
-        )
+        return try {
+            val bytes = BackendFunctionsClient.getMtaLirrPositions()
+            GtfsRtFetcher.parseAndFilter(bytes, Railroad.OTHER, "LIRR", lat, lon, radiusMiles, ::computeEtaMinutes)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "LIRR failed: ${e.message}", e)
+            emptyList()
+        }
     }
 
     suspend fun getMtaMetroNorthTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> {
-        return GtfsRtFetcher.fetch(
-            tag         = "Metro-North",
-            url         = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr",
-            headers     = emptyMap(),
-            railroad    = Railroad.OTHER,
-            agencyLabel = "Metro-North",
-            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
-            etaFn   = ::computeEtaMinutes
-        )
+        return try {
+            val bytes = BackendFunctionsClient.getMtaMetroNorthPositions()
+            GtfsRtFetcher.parseAndFilter(bytes, Railroad.OTHER, "Metro-North", lat, lon, radiusMiles, ::computeEtaMinutes)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Metro-North failed: ${e.message}", e)
+            emptyList()
+        }
     }
 
-    // ── Caltrain / ACE (Bay Area — GTFS-RT via 511.org, free key) ─────────────
-    //    Register at https://511.org/open-data/transit — add FIVE_ELEVEN_KEY to local.properties.
+    // ── Caltrain (Bay Area — GTFS-RT via Cloud Functions proxy) ───────────────
 
     suspend fun getCaltrainTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> {
-        val key = BuildConfig.FIVE_ELEVEN_KEY
-        if (key.isBlank()) return emptyList()
-        return GtfsRtFetcher.fetch(
-            tag         = "Caltrain",
-            url         = "https://api.511.org/Transit/VehiclePositions?api_key=$key&agency=CT",
-            railroad    = Railroad.OTHER,
-            agencyLabel = "Caltrain",
-            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
-            etaFn   = ::computeEtaMinutes
-        )
+        return try {
+            val bytes = BackendFunctionsClient.getCaltrainPositions()
+            GtfsRtFetcher.parseAndFilter(bytes, Railroad.OTHER, "Caltrain", lat, lon, radiusMiles, ::computeEtaMinutes)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Caltrain failed: ${e.message}", e)
+            emptyList()
+        }
     }
 
     // ── Sound Transit Sounder (Seattle — GTFS-RT, open feed) ──────────────────
@@ -239,7 +224,7 @@ class RailFanRepository(private val context: Context) {
                     )
                 }
         } catch (e: Exception) {
-            android.util.Log.e("RailFanRepo", "MBTA API failed: ${e.message}", e)
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "MBTA API failed: ${e.message}", e)
             emptyList()
         }
     }
@@ -249,65 +234,15 @@ class RailFanRepository(private val context: Context) {
         const val NEARBY_RADIUS_MILES = 500.0
     }
 
-    // ── AI symbol decoder ──────────────────────────────────────────────────────
+    // ── AI symbol decoder (via Cloud Functions proxy) ─────────────────────────
 
     suspend fun decodeTrainSymbol(symbol: String): Result<TrainSymbolDecodeResult> {
-        if (BuildConfig.ANTHROPIC_API_KEY.isBlank())
-            return Result.failure(Exception("AI Decoder requires an Anthropic API key. Add ANTHROPIC_API_KEY to local.properties."))
         return try {
-            if (BuildConfig.DEBUG) android.util.Log.d("RailFanDecoder", "Decoding: $symbol, DB size: ${com.railfancopilot.app.utils.SymbolDatabase.size}")
-
-            // Look up local symbol database first — only send relevant context to Claude
+            if (BuildConfig.DEBUG) android.util.Log.d("RailFanDecoder", "Decoding: $symbol")
             val localContext = com.railfancopilot.app.utils.SymbolDatabase.buildContext(symbol)
-
-            val systemPrompt = """You are an expert railfan and railroad operations specialist with deep knowledge of North American freight railroad train symbols and operations.
-
-SYMBOL TYPE GUIDE (first letter):
-A=Automotive, C=Coal, E=Equipment/Power Move, G=Grain, I=Intermodal,
-M=Manifest, Z=Priority Intermodal, U=Bulk/Unit, Q=Tank/Liquid,
-J=BNSF Interchange, L=Local, S=Special
-
-UP CITY CODES: CH=Chicago, LA=Los Angeles, KC=Kansas City, NO=New Orleans,
-PO=Portland, SE=Seattle, DN=Denver, SL=Salt Lake City, HO=Houston,
-EP=El Paso, OM=Omaha, SX=Sioux City IA, CB=Council Bluffs IA,
-NE=North Platte NE, LN=Lincoln NE, DM=Des Moines IA, RO=Roseville CA,
-FW=Fort Worth TX, SA=San Antonio TX, TU=Tucson AZ, OG=Ogden UT
-
-BNSF: Q/Z=Intermodal, H=Grain, M=Manifest
-NS: Numbers only (11N, 24Q)
-AMTRAK: Named trains + number
-
-LOCAL DATABASE LOOKUP RESULT:
-$localContext
-
-Use the local lookup data above as the primary source. Fill in schedule, consist, and additional operational details using your railroad knowledge.
-
-Return ONLY valid JSON, no markdown, no code blocks:
-{
-  "symbol": "string",
-  "type": "string",
-  "origin": "string",
-  "destination": "string",
-  "schedule": "string",
-  "typicalConsist": ["string"],
-  "railroad": "string (BNSF/UP/CSX/NS/CN/CP/AMTRAK/KCS/OTHER)",
-  "notes": "string",
-  "priority": "string (High/Medium/Low)"
-}"""
-
-            val response = NetworkModule.anthropicApi.sendMessage(
-                apiKey = BuildConfig.ANTHROPIC_API_KEY,
-                request = AnthropicRequest(
-                    system = systemPrompt,
-                    messages = listOf(AnthropicMessage("user", "Decode this train symbol: ${symbol.trim().uppercase()}"))
-                )
-            )
-            val rawText = response.content.firstOrNull()?.text ?: "{}"
+            val rawText = BackendFunctionsClient.decodeTrainSymbol(symbol, localContext)
             if (BuildConfig.DEBUG) android.util.Log.d("RailFanDecoder", "Raw response: $rawText")
-            val jsonText = rawText
-                .replace("```json", "")
-                .replace("```", "")
-                .trim()
+            val jsonText = rawText.replace("```json", "").replace("```", "").trim()
             val parsed = gson.fromJson(jsonText, DecodedSymbolJson::class.java)
             Result.success(TrainSymbolDecodeResult(
                 symbol = parsed.symbol ?: symbol,
@@ -321,10 +256,11 @@ Return ONLY valid JSON, no markdown, no code blocks:
                 priority = parsed.priority ?: "Unknown"
             ))
         } catch (e: Exception) {
-            android.util.Log.e("RailFanDecoder", "Decode failed: ${e.javaClass.simpleName}: ${e.message}", e)
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanDecoder", "Decode failed: ${e.javaClass.simpleName}: ${e.message}", e)
             Result.failure(e)
         }
     }
+
     private data class DecodedSymbolJson(
         val symbol: String? = null,
         val type: String? = null,
@@ -337,46 +273,14 @@ Return ONLY valid JSON, no markdown, no code blocks:
         val priority: String? = null
     )
 
-    // ── Locomotive identification ──────────────────────────────────────────────
+    // ── Locomotive identification (via Cloud Functions proxy) ─────────────────
 
     suspend fun identifyLocomotive(base64Image: String): Result<String> {
-        if (BuildConfig.ANTHROPIC_API_KEY.isBlank())
-            return Result.failure(Exception("Loco Identifier requires an Anthropic API key. Add ANTHROPIC_API_KEY to local.properties."))
         return try {
-            val content = listOf(
-                mapOf(
-                    "type" to "image",
-                    "source" to mapOf(
-                        "type" to "base64",
-                        "media_type" to "image/jpeg",
-                        "data" to base64Image
-                    )
-                ),
-                mapOf(
-                    "type" to "text",
-                    "text" to """Identify the locomotive(s) in this photo. Structure your response exactly as:
-
-**Model:** [manufacturer and model — include industrial switchers, e.g. GE 44-ton, EMD SW1500, Plymouth ML-8, Trackmobile, etc.]
-**Owner/Railroad:** [exact name shown on the locomotive or visible signage — this may be a private company, agricultural cooperative, industrial facility, shortline, or Class I railroad. Read any lettering or logos carefully.]
-**Road Number:** [number if visible, or "Not visible"]
-**Type:** [one of: Industrial Switcher / Yard Switcher / Road Switcher / Road Locomotive / Narrow Gauge / Other]
-**Era:** [approximate decade(s) built, e.g. 1950s–1960s]
-**Details:** [2–3 sentences on paint scheme, body style, notable features, and operator type — e.g. private industrial, shortline, Class I railroad]
-
-If the image does not show a locomotive clearly, respond only with: "No locomotive clearly visible in this photo."
-Read all visible text, logos, and signage in the image carefully before answering — the owner name is often painted directly on the unit. Do not default to Class I railroad names if the markings show otherwise."""
-                )
-            )
-            val response = NetworkModule.anthropicApi.sendMessage(
-                apiKey = BuildConfig.ANTHROPIC_API_KEY,
-                request = AnthropicRequest(
-                    system = """You are an expert railfan and locomotive identifier with deep knowledge of all North American locomotives — including Class I railroads, shortlines, regional railroads, private industrial operators, agricultural cooperatives, port authorities, mine railways, and museum/heritage railroads. You can identify diesel, electric, steam, and industrial switcher models from any era. When reading a photo, always read ALL visible text, logos, road numbers, and background signage before forming your answer — private and industrial operators often have their name painted directly on the unit or on nearby buildings. Never assume a locomotive belongs to a Class I railroad if the markings suggest otherwise. Be precise and only state what you can clearly see.""",
-                    messages = listOf(AnthropicMessage("user", content))
-                )
-            )
-            Result.success(response.content.firstOrNull()?.text ?: "Unable to identify locomotive.")
+            val text = BackendFunctionsClient.identifyLocomotive(base64Image)
+            Result.success(text)
         } catch (e: Exception) {
-            android.util.Log.e("LocoIdentifier", "Identify failed: ${e.message}", e)
+            if (BuildConfig.DEBUG) android.util.Log.e("LocoIdentifier", "Identify failed: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -394,18 +298,21 @@ Read all visible text, logos, and signage in the image carefully before answerin
     fun getAllReportsFlow(): Flow<List<CommunityReport>> =
         FirestoreCommunityRepo.getAllSightingsFlow()
 
+    fun deleteCommunityReport(reportId: String) =
+        FirestoreCommunityRepo.deleteSighting(reportId)
+
     suspend fun addReport(
         lat: Double, lon: Double, text: String,
         trainSymbol: String?, railroad: String?, tags: List<String>,
-        localPhotoPath: String? = null
+        localPhotoPath: String? = null,
+        reporterName: String = "Railfan"
     ) {
-        // Post to Firestore so iOS users see it too
         FirestoreCommunityRepo.submitSighting(
             lat = lat, lon = lon,
             text = text,
             trainSymbol = trainSymbol,
             railroad = railroad,
-            reporterName = "Railfan",   // TODO: wire up real user name from settings
+            reporterName = reporterName,
             location = "Unknown location"
         )
     }

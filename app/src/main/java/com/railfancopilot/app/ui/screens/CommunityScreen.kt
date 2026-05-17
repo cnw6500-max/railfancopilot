@@ -89,7 +89,7 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     contentColor = RailBlue,
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Add sighting report", modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -115,9 +115,9 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     safetyAlerts.forEach { alert ->
                         val (fg, bg, border) = when (alert.severity) {
-                            AlertSeverity.DANGER  -> Triple(RailRed,   Color(0xFF1A0A0A), Color(0xFF7F1D1D))
-                            AlertSeverity.WARNING -> Triple(RailAmber, Color(0xFF1A1400), Color(0xFF78580C))
-                            else                  -> Triple(RailBlue,  Color(0xFF0A0F1A), Color(0xFF1E3A5F))
+                            AlertSeverity.DANGER  -> Triple(RailRed,   AlertBgDanger,  AlertBorderDanger)
+                            AlertSeverity.WARNING -> Triple(RailAmber, AlertBgWarning, AlertBorderWarning)
+                            else                  -> Triple(RailBlue,  AlertBgInfo,    RailBlueDark)
                         }
                         AlertBanner(alert.message, fg, bg, border)
                     }
@@ -131,7 +131,7 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         }
 
         items(reports) { report ->
-            ReportCard(report, userLocation)
+            ReportCard(report, userLocation, onDelete = { vm.deleteReport(it.id) })
         }
 
         if (reports.isEmpty()) {
@@ -165,7 +165,7 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                 ).forEach { (name, number) ->
                     Row(verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Default.Phone, null, tint = RailBlue, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Phone, contentDescription = "Phone", tint = RailBlue, modifier = Modifier.size(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(name, color = TextPrimary, fontSize = 13.sp)
                             Text(number, color = RailBlue, fontSize = 12.sp)
@@ -195,13 +195,13 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
 }
 
 @Composable
-fun ReportCard(report: CommunityReport, userLocation: Location?) {
+fun ReportCard(report: CommunityReport, userLocation: Location?, onDelete: ((CommunityReport) -> Unit)? = null) {
     val context = LocalContext.current
     val gson = remember { Gson() }
     val tags = remember(report.tags) {
         try { gson.fromJson<List<String>>(report.tags, object : TypeToken<List<String>>() {}.type) }
         catch (e: Exception) {
-            android.util.Log.e("CommunityScreen", "Failed to parse tags: ${e.message}", e)
+            if (com.railfancopilot.app.BuildConfig.DEBUG) android.util.Log.e("CommunityScreen", "Failed to parse tags: ${e.message}", e)
             emptyList()
         }
     }
@@ -229,6 +229,7 @@ fun ReportCard(report: CommunityReport, userLocation: Location?) {
     }
 
     var textExpanded by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     val isLongText = report.text.length > 160
 
     // Load photo thumbnail asynchronously
@@ -262,7 +263,7 @@ fun ReportCard(report: CommunityReport, userLocation: Location?) {
             }
             Text(report.userName, color = TextSecondary, fontSize = 12.sp)
             if (report.isVerified) {
-                Icon(Icons.Default.Verified, null, tint = RailBlue, modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.Verified, contentDescription = "Verified user", tint = RailBlue, modifier = Modifier.size(14.dp))
             }
             Spacer(Modifier.weight(1f))
             if (distanceLabel != null) {
@@ -316,12 +317,25 @@ fun ReportCard(report: CommunityReport, userLocation: Location?) {
             )
         }
 
-        // Share sighting
+        // Share / delete row
         Spacer(Modifier.height(4.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
+            if (onDelete != null) {
+                IconButton(
+                    onClick = { showDeleteDialog = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.DeleteOutline,
+                        contentDescription = "Delete sighting",
+                        tint = TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             IconButton(
                 onClick = {
                     val shareText = buildString {
@@ -351,6 +365,25 @@ fun ReportCard(report: CommunityReport, userLocation: Location?) {
                 )
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            containerColor = BgCard,
+            title = { Text("Delete sighting?", color = TextPrimary, fontSize = 16.sp) },
+            text = { Text("This will permanently remove the sighting from the community feed.", color = TextSecondary, fontSize = 14.sp) },
+            confirmButton = {
+                TextButton(onClick = { onDelete?.invoke(report); showDeleteDialog = false }) {
+                    Text("Delete", color = RailRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            }
+        )
     }
 }
 
@@ -456,7 +489,7 @@ fun SubmitReportDialog(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(if (isListening) Color(0xFF4A1A1A) else RailBlueDark)
+                        .background(if (isListening) MicListeningBg else RailBlueDark)
                 ) {
                     Icon(
                         Icons.Default.Mic,
@@ -480,7 +513,7 @@ fun SubmitReportDialog(
                     trailingIcon = {
                         if (text.isNotBlank()) {
                             IconButton(onClick = { text = "" }, modifier = Modifier.size(20.dp)) {
-                                Icon(Icons.Default.Clear, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Clear, contentDescription = "Clear text", tint = TextMuted, modifier = Modifier.size(16.dp))
                             }
                         }
                     },
@@ -589,7 +622,7 @@ fun SubmitReportDialog(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1A1000))
+                            .background(GpsWarnBg)
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Icon(Icons.Default.LocationOff, null,

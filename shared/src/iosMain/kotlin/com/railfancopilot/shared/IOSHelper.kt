@@ -95,6 +95,9 @@ class IOSRailFanHelper(
         }
     }
 
+    fun parseDecodeResult(json: String): TrainSymbolDecodeResult? =
+        repo.parseDecodeResultJson(json)
+
     // ── Geocoding ─────────────────────────────────────────────────────────────
 
     fun reverseGeocode(

@@ -371,7 +371,7 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF1A2A0A))
+                        .background(AchievementBannerBg)
                         .border(1.dp, RailGreen.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                         .clickable { vm.consumeNewAchievement() }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -431,7 +431,11 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         if (taggedPhotos.isNotEmpty()) {
             item { SectionHeader("Recent Tags (${taggedPhotos.size})") }
             items(taggedPhotosReversed, key = { it.id }) { tag ->
-                TaggedPhotoCard(tag, onDelete = { vm.deleteTaggedPhoto(tag) })
+                TaggedPhotoCard(
+                    tag = tag,
+                    onDelete = { vm.deleteTaggedPhoto(tag) },
+                    onPostToCommunity = { vm.postPhotoToCommunity(tag) }
+                )
             }
         }
 
@@ -512,7 +516,7 @@ fun LocoIdHistoryCard(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1A2A1A)),
+                    .background(LocoPlaceholderBg),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.DirectionsRailway, null,
@@ -553,7 +557,7 @@ fun TagRow(label: String, value: String) {
 }
 
 @Composable
-fun TaggedPhotoCard(tag: PhotoMetadata, onDelete: (() -> Unit)? = null) {
+fun TaggedPhotoCard(tag: PhotoMetadata, onDelete: (() -> Unit)? = null, onPostToCommunity: (() -> Unit)? = null) {
     val context = LocalContext.current
     // railroad is stored as enum name string — resolve back to Railroad for display
     val railroad = remember(tag.railroad) {
@@ -596,7 +600,7 @@ fun TaggedPhotoCard(tag: PhotoMetadata, onDelete: (() -> Unit)? = null) {
                 modifier = Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (railroad != null) Color(railroad.color) else Color(0xFF2A2A2A)),
+                    .background(if (railroad != null) Color(railroad.color) else RrPlaceholderBg),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -671,6 +675,13 @@ fun TaggedPhotoCard(tag: PhotoMetadata, onDelete: (() -> Unit)? = null) {
                 }
             }
 
+            if (onPostToCommunity != null) {
+                IconButton(onClick = onPostToCommunity, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Upload, contentDescription = "Post to Community",
+                        tint = RailBlue, modifier = Modifier.size(18.dp))
+                }
+            }
+
             if (onDelete != null) {
                 IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.DeleteOutline, null, tint = TextMuted, modifier = Modifier.size(18.dp))
@@ -721,11 +732,11 @@ fun SunPredictorCard(sunInfo: SunInfo?) {
                         val r  = size.width * 0.42f
 
                         // Outer ring
-                        drawCircle(color = Color(0xFF1E2A3A), style = Stroke(1.5.dp.toPx()), radius = r)
+                        drawCircle(color = Border, style = Stroke(1.5.dp.toPx()), radius = r)
                         // Horizontal cross-hair
-                        drawLine(Color(0xFF2A3450), Offset(cx - r, cy), Offset(cx + r, cy), strokeWidth = 0.5.dp.toPx())
+                        drawLine(BorderLight, Offset(cx - r, cy), Offset(cx + r, cy), strokeWidth = 0.5.dp.toPx())
                         // Vertical cross-hair
-                        drawLine(Color(0xFF2A3450), Offset(cx, cy - r), Offset(cx, cy + r), strokeWidth = 0.5.dp.toPx())
+                        drawLine(BorderLight, Offset(cx, cy - r), Offset(cx, cy + r), strokeWidth = 0.5.dp.toPx())
 
                         // Sun dot — distance from centre encodes elevation (dot at edge = horizon, centre = zenith)
                         val elev     = sunInfo.elevationDegrees.toFloat()
@@ -738,13 +749,13 @@ fun SunPredictorCard(sunInfo: SunInfo?) {
 
                         // Ray from centre to sun
                         drawLine(
-                            color = Color(0xFFF59E0B).copy(alpha = 0.35f),
+                            color = SunRayAmber.copy(alpha = 0.35f),
                             start = Offset(cx, cy), end = Offset(sx, sy),
                             strokeWidth = 1.dp.toPx()
                         )
                         // Sun dot — amber when above horizon, dim when below
                         drawCircle(
-                            color = if (elev >= -0.833f) Color(0xFFFBBF24) else Color(0xFF6B5A30),
+                            color = if (elev >= -0.833f) RailAmber else SunBelowHorizon,
                             radius = 8.dp.toPx(),
                             center = Offset(sx, sy)
                         )
@@ -777,7 +788,7 @@ fun SunPredictorCard(sunInfo: SunInfo?) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF2A1A0A))
+                        .background(GoldenHourBg)
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text("✦ Golden hour active — perfect lighting conditions!", color = RailAmber, fontSize = 12.sp)
@@ -816,7 +827,7 @@ fun PhotoToolCard(
             .clickable(onClick = onClick)
             .padding(14.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = RailBlue, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = title, tint = RailBlue, modifier = Modifier.size(24.dp))
         Spacer(Modifier.height(8.dp))
         Text(title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
         Text(desc, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
@@ -856,7 +867,7 @@ fun AchievementsCard(achievements: List<Achievement>) {
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (achievement.earned) Color(0xFF1A2A1A) else BgInput),
+                        .background(if (achievement.earned) LocoPlaceholderBg else BgInput),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

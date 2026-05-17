@@ -28,6 +28,9 @@ import com.railfancopilot.app.ui.components.SectionHeader
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 import android.app.Activity
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import kotlin.math.roundToInt
 
 private val FAQ = listOf(
@@ -61,6 +64,8 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val mtaMetroNorthEnabled by vm.mtaMetroNorthEnabled.collectAsState()
     val caltrainEnabled      by vm.caltrainEnabled.collectAsState()
     val soundTransitEnabled  by vm.soundTransitEnabled.collectAsState()
+    val userName             by vm.userName.collectAsState()
+    var userNameDraft by remember(userName) { mutableStateOf(userName) }
 
     LazyColumn(
         contentPadding = PaddingValues(bottom = 100.dp),
@@ -122,6 +127,36 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                             Text("Already purchased on another device?", color = TextMuted, fontSize = 12.sp)
                         }
                     }
+                }
+            }
+        }
+
+        // ── Community ──────────────────────────────────────────────────────────
+        item { SectionHeader("Community") }
+
+        item {
+            SettingsCard {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.Person, null, tint = RailBlue, modifier = Modifier.size(20.dp))
+                    OutlinedTextField(
+                        value = userNameDraft,
+                        onValueChange = { userNameDraft = it },
+                        label = { Text("Display name", color = TextMuted, fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = RailBlue,
+                            unfocusedBorderColor = TextMuted,
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { vm.saveUserName(userNameDraft) })
+                    )
                 }
             }
         }
@@ -278,12 +313,9 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                 SwitchSetting(
                     icon = Icons.Default.Train,
                     title = "Metra",
-                    subtitle = if (com.railfancopilot.app.BuildConfig.METRA_FEED_USER.isBlank())
-                        "Credentials missing — get free key at metra.com/developers"
-                    else "Chicago area · Metra credentials configured ✓",
+                    subtitle = "Chicago area · Metra GTFS-RT",
                     checked = metraEnabled,
-                    onCheckedChange = { vm.saveMetraEnabled(it) },
-                    enabled = com.railfancopilot.app.BuildConfig.METRA_FEED_USER.isNotBlank()
+                    onCheckedChange = { vm.saveMetraEnabled(it) }
                 )
             }
         }
@@ -297,12 +329,9 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                 SwitchSetting(
                     icon = Icons.Default.Train,
                     title = "Caltrain",
-                    subtitle = if (com.railfancopilot.app.BuildConfig.FIVE_ELEVEN_KEY.isBlank())
-                        "API key missing — get free key at 511.org/open-data"
-                    else "Bay Area · 511 key configured ✓",
+                    subtitle = "Bay Area · 511.org GTFS-RT",
                     checked = caltrainEnabled,
-                    onCheckedChange = { vm.saveCaltrainEnabled(it) },
-                    enabled = com.railfancopilot.app.BuildConfig.FIVE_ELEVEN_KEY.isNotBlank()
+                    onCheckedChange = { vm.saveCaltrainEnabled(it) }
                 )
                 SettingsDivider()
                 SwitchSetting(
@@ -372,13 +401,7 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                 SettingsDivider()
                 InfoRow(Icons.Default.Radio, "Frequency reference", "RadioReference.com · AAR standard band")
                 SettingsDivider()
-                InfoRow(
-                    Icons.Default.SmartToy,
-                    "AI features",
-                    if (com.railfancopilot.app.BuildConfig.ANTHROPIC_API_KEY.isBlank())
-                        "Key missing"
-                    else "Claude by Anthropic ✓"
-                )
+                InfoRow(Icons.Default.SmartToy, "AI features", "Claude by Anthropic")
             }
         }
 

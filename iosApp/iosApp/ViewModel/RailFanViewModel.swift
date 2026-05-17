@@ -43,6 +43,11 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var showFreight   = true
     @Published var isPremium     = false
 
+    // ── Community ─────────────────────────────────────────────────────────────
+    @Published var userName: String = UserDefaults.standard.string(forKey: "userName") ?? "Railfan" {
+        didSet { UserDefaults.standard.set(userName, forKey: "userName") }
+    }
+
     // ── Approach Notifications ────────────────────────────────────────────────
     @Published var approachEtaThreshold: Int = 10  // minutes
     @Published var approachNotificationsEnabled: Bool = false
@@ -121,21 +126,21 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         isDecoding = true
         decoderResult = nil
         decoderError = nil
-        helper.decodeSymbol(
-            symbol: symbol,
-            onSuccess: { [weak self] result in
-                Task { @MainActor in
-                    self?.decoderResult = result
-                    self?.isDecoding = false
+        Task {
+            do {
+                let json = try await FirebaseFunctionsClient.shared.decodeTrainSymbol(
+                    symbol: symbol, localContext: "(no local match found)")
+                // Parse JSON into TrainSymbolDecodeResult via KMP helper
+                if let result = helper.parseDecodeResult(json: json) {
+                    decoderResult = result
+                } else {
+                    decoderError = "Could not parse decode result"
                 }
-            },
-            onError: { [weak self] msg in
-                Task { @MainActor in
-                    self?.decoderError = msg
-                    self?.isDecoding = false
-                }
+            } catch {
+                decoderError = error.localizedDescription
             }
-        )
+            isDecoding = false
+        }
     }
 
     // ── Loco identifier ───────────────────────────────────────────────────────
@@ -143,22 +148,14 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         isIdentifying = true
         locoIdResult = nil
         locoIdError  = nil
-        let b64 = jpegData.base64EncodedString()
-        helper.identifyLoco(
-            base64Jpeg: b64,
-            onSuccess: { [weak self] text in
-                Task { @MainActor in
-                    self?.locoIdResult = text
-                    self?.isIdentifying = false
-                }
-            },
-            onError: { [weak self] msg in
-                Task { @MainActor in
-                    self?.locoIdError = msg
-                    self?.isIdentifying = false
-                }
+        Task {
+            do {
+                locoIdResult = try await FirebaseFunctionsClient.shared.identifyLocomotive(jpegData: jpegData)
+            } catch {
+                locoIdError = error.localizedDescription
             }
-        )
+            isIdentifying = false
+        }
     }
 
     // ── Sun info ──────────────────────────────────────────────────────────────

@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Community sightings — readable by all, writable only with valid data
+    match /sightings/{sightingId} {
+      allow read: if true;
+
+      allow create: if request.resource.data.keys().hasAll([
+                        'railroad', 'trainSymbol', 'location', 'notes',
+                        'latitude', 'longitude', 'reporterName',
+                        'timestampMs', 'upvotes'
+                      ])
+                    && request.resource.data.latitude is number
+                    && request.resource.data.longitude is number
+                    && request.resource.data.latitude >= -90
+                    && request.resource.data.latitude <= 90
+                    && request.resource.data.longitude >= -180
+                    && request.resource.data.longitude <= 180
+                    && request.resource.data.upvotes == 0
+                    && request.resource.data.notes is string
+                    && request.resource.data.notes.size() <= 1000
+                    && request.resource.data.reporterName is string
+                    && request.resource.data.reporterName.size() <= 100;
+
+      // Only allow upvote increments (no other field changes)
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
+                    && request.resource.data.upvotes == resource.data.upvotes + 1;
+
+      // No client-side deletes
+      allow delete: if false;
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

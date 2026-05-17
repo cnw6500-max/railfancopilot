@@ -9,6 +9,19 @@ struct SettingsView: View {
                 Color.bgPrimary.ignoresSafeArea()
 
                 List {
+                    // Community
+                    Section(header: Text("Community").foregroundColor(.textMuted)) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.railBlue)
+                                .frame(width: 22)
+                            TextField("Display name", text: $vm.userName)
+                                .foregroundColor(.textPrimary)
+                                .submitLabel(.done)
+                        }
+                    }
+                    .listRowBackground(Color.bgCard)
+
                     // Train filters
                     Section(header: Text("Train Filters").foregroundColor(.textMuted)) {
                         ToggleRow(label: "Amtrak",           icon: "train.side.front.car",

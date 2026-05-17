@@ -291,6 +291,22 @@ class RailFanRepository(
         }
     }
 
+    fun parseDecodeResultJson(json: String): TrainSymbolDecodeResult? = try {
+        val cleaned = json.replace("```json", "").replace("```", "").trim()
+        val parsed = railfanJson.decodeFromString<DecodedSymbolJson>(cleaned)
+        TrainSymbolDecodeResult(
+            symbol         = parsed.symbol ?: "",
+            type           = parsed.type ?: "Unknown",
+            origin         = parsed.origin ?: "Unknown",
+            destination    = parsed.destination ?: "Unknown",
+            schedule       = parsed.schedule ?: "Unknown",
+            typicalConsist = parsed.typicalConsist ?: emptyList(),
+            railroad       = Railroad.entries.find { it.name == (parsed.railroad ?: "") } ?: Railroad.OTHER,
+            notes          = parsed.notes ?: "",
+            priority       = parsed.priority ?: "Unknown"
+        )
+    } catch (_: Exception) { null }
+
     suspend fun identifyLocomotive(base64ImageJpeg: String): Result<String> {
         if (anthropicApiKey.isBlank())
             return Result.failure(Exception("Loco Identifier requires an Anthropic API key."))

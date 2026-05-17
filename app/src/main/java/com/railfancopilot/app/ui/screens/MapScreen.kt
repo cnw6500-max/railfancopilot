@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MapScreen(vm: RailFanViewModel) {
     val trains by vm.filteredTrains.collectAsState()
+    val trainTrails by vm.trainTrails.collectAsState()
     val features by vm.mapFeatures.collectAsState()
     val selectedRailroad by vm.selectedRailroad.collectAsState()
     val isLoading by vm.isLoadingTrains.collectAsState()
@@ -140,6 +141,21 @@ fun MapScreen(vm: RailFanViewModel) {
             ) {
                 if (showRailwayMap) {
                     TileOverlay(tileProvider = railwayTileProvider, transparency = 0.0f)
+                }
+
+                // Draw trail polylines behind markers
+                trains.forEach { train ->
+                    val waypoints = trainTrails[train.id]
+                    if (waypoints != null && waypoints.size >= 2) {
+                        val color = android.graphics.Color.HSVToColor(
+                            160, floatArrayOf(train.railroad.markerHue, 0.8f, 0.9f)
+                        )
+                        Polyline(
+                            points = waypoints,
+                            color = androidx.compose.ui.graphics.Color(color),
+                            width = 6f
+                        )
+                    }
                 }
 
                 trains.forEach { train ->

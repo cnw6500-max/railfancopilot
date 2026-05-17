@@ -10,6 +10,7 @@ import android.location.Location
 import android.os.Looper
 import androidx.datastore.core.DataStore
 import com.google.android.gms.location.*
+import com.google.android.gms.maps.model.LatLng
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.doublePreferencesKey
@@ -48,6 +49,7 @@ private val PREF_MTA_LIRR_ENABLED          = booleanPreferencesKey("mta_lirr_ena
 private val PREF_MTA_METRO_NORTH_ENABLED   = booleanPreferencesKey("mta_metro_north_enabled")   // default false
 private val PREF_CALTRAIN_ENABLED          = booleanPreferencesKey("caltrain_enabled")          // default false
 private val PREF_SOUND_TRANSIT_ENABLED     = booleanPreferencesKey("sound_transit_enabled")     // default false
+private val PREF_USER_NAME                 = stringPreferencesKey("user_name")                    // default "Railfan"
 private val PREF_DECODE_COUNT              = intPreferencesKey("decode_count")                    // cumulative successful decodes
 
 private val EARNED_IDS_KEY = stringSetPreferencesKey("earned_ids")
@@ -114,6 +116,15 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _soundTransitEnabled            = MutableStateFlow(false)
     val soundTransitEnabled: StateFlow<Boolean> = _soundTransitEnabled.asStateFlow()
 
+    private val _userName            = MutableStateFlow("Railfan")
+    val userName: StateFlow<String>  = _userName.asStateFlow()
+
+    fun saveUserName(name: String) {
+        val trimmed = name.trim().ifEmpty { "Railfan" }
+        _userName.value = trimmed
+        viewModelScope.launch { settingsStore.edit { it[PREF_USER_NAME] = trimmed } }
+    }
+
     // ── Onboarding ────────────────────────────────────────────────────────────
     // null = DataStore not yet read; false = first launch; true = already shown
 
@@ -140,6 +151,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _mtaMetroNorthEnabled.value  = prefs[PREF_MTA_METRO_NORTH_ENABLED]    ?: false
             _caltrainEnabled.value       = prefs[PREF_CALTRAIN_ENABLED]           ?: false
             _soundTransitEnabled.value   = prefs[PREF_SOUND_TRANSIT_ENABLED]      ?: false
+            _userName.value              = prefs[PREF_USER_NAME]                  ?: "Railfan"
         }
     }
 
@@ -255,6 +267,10 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _trains = MutableStateFlow<List<TrainLocation>>(emptyList())
     val trains: StateFlow<List<TrainLocation>> = _trains.asStateFlow()
 
+    // trainId → ordered list of (lat, lon) waypoints, kept for the session only
+    private val _trainTrails = MutableStateFlow<Map<String, List<LatLng>>>(emptyMap())
+    val trainTrails: StateFlow<Map<String, List<LatLng>>> = _trainTrails.asStateFlow()
+
     private val _selectedRailroad = MutableStateFlow<Railroad?>(null)
     val selectedRailroad: StateFlow<Railroad?> = _selectedRailroad.asStateFlow()
 
@@ -309,6 +325,18 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
 
                 _trains.value = all
                 _lastRefreshMs.value = System.currentTimeMillis()
+                val updatedTrails = _trainTrails.value.toMutableMap()
+                all.forEach { train ->
+                    val waypoint = LatLng(train.latitude, train.longitude)
+                    val existing = updatedTrails[train.id] ?: emptyList()
+                    // Only append if position actually changed
+                    if (existing.lastOrNull() != waypoint) {
+                        updatedTrails[train.id] = (existing + waypoint).takeLast(50)
+                    }
+                }
+                // Drop trails for trains no longer in the feed
+                updatedTrails.keys.retainAll(all.map { it.id }.toSet())
+                _trainTrails.value = updatedTrails
                 checkTrainAchievements(all)
                 checkApproachNotifications(all)
             } catch (e: Exception) {
@@ -493,10 +521,26 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     /** Background loop: re-compute sun position every 5 minutes while a location is known. */
     private fun startSunRefreshLoop() {
         viewModelScope.launch {
+            var wasGoldenHour = false
             while (true) {
                 delay(5 * 60 * 1000L)
                 _userLocation.value?.let { loc ->
-                    _sunInfo.value = repo.calculateSunInfo(loc.latitude, loc.longitude)
+                    val sun = repo.calculateSunInfo(loc.latitude, loc.longitude)
+                    _sunInfo.value = sun
+                    if (sun.isGoldenHour && !wasGoldenHour) {
+                        val notifMgr = getApplication<Application>()
+                            .getSystemService(NotificationManager::class.java)
+                        val label = if (sun.elevationDegrees > 0) "Sunrise" else "Sunset"
+                        val notif = NotificationCompat.Builder(getApplication(), GOLDENHOUR_CHANNEL)
+                            .setSmallIcon(android.R.drawable.ic_menu_camera)
+                            .setContentTitle("Golden Hour — $label")
+                            .setContentText("Perfect light for rail photography right now")
+                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                            .setAutoCancel(true)
+                            .build()
+                        notifMgr.notify("golden_hour".hashCode(), notif)
+                    }
+                    wasGoldenHour = sun.isGoldenHour
                 }
             }
         }
@@ -614,7 +658,28 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
 
     fun submitReport(lat: Double, lon: Double, text: String, trainSymbol: String?, railroad: String?, tags: List<String>, localPhotoPath: String? = null) {
         viewModelScope.launch {
-            repo.addReport(lat, lon, text, trainSymbol, railroad, tags, localPhotoPath)
+            repo.addReport(lat, lon, text, trainSymbol, railroad, tags, localPhotoPath, _userName.value)
+        }
+    }
+
+    fun deleteReport(reportId: String) {
+        repo.deleteCommunityReport(reportId)
+    }
+
+    fun postPhotoToCommunity(photo: PhotoMetadata) {
+        val lat = photo.latitude ?: _userLocation.value?.latitude ?: return
+        val lon = photo.longitude ?: _userLocation.value?.longitude ?: return
+        viewModelScope.launch {
+            repo.addReport(
+                lat          = lat,
+                lon          = lon,
+                text         = photo.notes ?: "",
+                trainSymbol  = photo.trainSymbol,
+                railroad     = photo.railroad,
+                tags         = emptyList(),
+                localPhotoPath = photo.localPath,
+                reporterName = _userName.value
+            )
         }
     }
 
@@ -690,6 +755,28 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
 
         _safetyAlerts.value = alerts
+
+        // Fire a one-time notification when first entering a DANGER zone
+        val notifMgr = getApplication<Application>().getSystemService(NotificationManager::class.java)
+        CLASSIFICATION_YARDS.forEach { yard ->
+            Location.distanceBetween(
+                location.latitude, location.longitude,
+                yard.latitude, yard.longitude, distBuf
+            )
+            if (distBuf[0] < 400 && yard.id !in notifiedGeofenceIds) {
+                notifiedGeofenceIds.add(yard.id)
+                val notif = NotificationCompat.Builder(getApplication(), GEOFENCE_CHANNEL)
+                    .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                    .setContentTitle("Classification Yard Nearby")
+                    .setContentText("${yard.name} — railroad property, stay on public rights-of-way")
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setAutoCancel(true)
+                    .build()
+                notifMgr.notify(yard.id.hashCode(), notif)
+            } else if (distBuf[0] >= 400) {
+                notifiedGeofenceIds.remove(yard.id)
+            }
+        }
     }
 
     // ── Encyclopedia ──────────────────────────────────────────────────────────
@@ -791,17 +878,23 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     // ── Approach notifications ────────────────────────────────────────────────
 
     private val notifiedTrainIds = Collections.synchronizedSet(mutableSetOf<String>())
-    private val APPROACH_CHANNEL = "approach_alerts"
+    private val APPROACH_CHANNEL  = "approach_alerts"
+    private val GEOFENCE_CHANNEL  = "geofence_alerts"
+    private val GOLDENHOUR_CHANNEL = "golden_hour_alerts"
+
+    private val notifiedGeofenceIds = Collections.synchronizedSet(mutableSetOf<String>())
 
     private fun createApproachNotificationChannel() {
-        val channel = NotificationChannel(
-            APPROACH_CHANNEL,
-            "Train Approach Alerts",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply { description = "Alerts when a train is approaching your location" }
-        getApplication<Application>()
-            .getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+        val mgr = getApplication<Application>().getSystemService(NotificationManager::class.java)
+        mgr.createNotificationChannel(NotificationChannel(
+            APPROACH_CHANNEL, "Train Approach Alerts", NotificationManager.IMPORTANCE_HIGH
+        ).apply { description = "Alerts when a train is approaching your location" })
+        mgr.createNotificationChannel(NotificationChannel(
+            GEOFENCE_CHANNEL, "Yard & Geofence Alerts", NotificationManager.IMPORTANCE_DEFAULT
+        ).apply { description = "Alerts when you enter a classification yard or saved location" })
+        mgr.createNotificationChannel(NotificationChannel(
+            GOLDENHOUR_CHANNEL, "Golden Hour Alerts", NotificationManager.IMPORTANCE_DEFAULT
+        ).apply { description = "Alerts at sunrise and sunset golden hour for photography" })
     }
 
     private fun checkApproachNotifications(trains: List<TrainLocation>) {

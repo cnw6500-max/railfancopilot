@@ -44,7 +44,8 @@ object FirestoreCommunityRepo {
             .limit(100)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    android.util.Log.e("FirestoreRepo", "Listen failed: ${error.message}", error)
+                    if (com.railfancopilot.app.BuildConfig.DEBUG)
+                        android.util.Log.e("FirestoreRepo", "Listen failed: ${error.message}", error)
                     return@addSnapshotListener
                 }
 
@@ -99,7 +100,8 @@ object FirestoreCommunityRepo {
                             )
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("FirestoreRepo", "Parse error on ${doc.id}: ${e.message}")
+                        if (com.railfancopilot.app.BuildConfig.DEBUG)
+                            android.util.Log.e("FirestoreRepo", "Parse error on ${doc.id}: ${e.message}")
                     }
                 }
 
@@ -177,7 +179,8 @@ object FirestoreCommunityRepo {
         )
         db.collection(COLLECTION).add(doc)
             .addOnFailureListener { e ->
-                android.util.Log.e("FirestoreRepo", "submitSighting failed: ${e.message}", e)
+                if (com.railfancopilot.app.BuildConfig.DEBUG)
+                    android.util.Log.e("FirestoreRepo", "submitSighting failed: ${e.message}", e)
             }
     }
 
@@ -186,5 +189,15 @@ object FirestoreCommunityRepo {
     fun upvote(sightingId: String) {
         db.collection(COLLECTION).document(sightingId)
             .update("upvotes", com.google.firebase.firestore.FieldValue.increment(1))
+    }
+
+    // ── Delete a sighting ─────────────────────────────────────────────────────
+
+    fun deleteSighting(sightingId: String) {
+        db.collection(COLLECTION).document(sightingId).delete()
+            .addOnFailureListener { e ->
+                if (com.railfancopilot.app.BuildConfig.DEBUG)
+                    android.util.Log.e("FirestoreRepo", "deleteSighting failed: ${e.message}", e)
+            }
     }
 }
