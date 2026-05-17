@@ -150,7 +150,13 @@ struct WebPlayerSheet: View {
 struct WebView: UIViewRepresentable {
     let url: URL
     func makeUIView(context: Context) -> WKWebView {
-        let wv = WKWebView()
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.backgroundColor = UIColor(red: 0.05, green: 0.1, blue: 0.18, alpha: 1)
+        wv.isOpaque = false
+        wv.scrollView.backgroundColor = .clear
         wv.load(URLRequest(url: url))
         return wv
     }
