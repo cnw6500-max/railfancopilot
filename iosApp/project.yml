@@ -58,4 +58,4 @@ targets:
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       ENABLE_PREVIEWS: "YES"
       CODE_SIGN_STYLE: Automatic
-      DEVELOPMENT_TEAM: ""   # fill in your Apple Developer Team ID
+      DEVELOPMENT_TEAM: "7K7CYUNXTT"
