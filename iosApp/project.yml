@@ -27,6 +27,8 @@ targets:
         codeSign: true
       - package: Firebase
         product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseFunctions
     info:
       path: iosApp/Info.plist
       properties:
