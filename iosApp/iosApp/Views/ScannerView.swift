@@ -118,16 +118,30 @@ struct WebPlayerSheet: View {
 
     var body: some View {
         NavigationView {
-            WebView(url: URL(string: url)!)
-                .ignoresSafeArea(edges: .bottom)
-                .navigationTitle("Live Streams")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { dismiss() }
-                            .foregroundColor(.railBlue)
+            Group {
+                if let parsedURL = URL(string: url) {
+                    WebView(url: parsedURL)
+                        .ignoresSafeArea(edges: .bottom)
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                            .font(.system(size: 40))
+                            .foregroundColor(.textMuted)
+                        Text("Could not load scanner")
+                            .foregroundColor(.textMuted)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.bgPrimary)
                 }
+            }
+            .navigationTitle("Live Streams")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundColor(.railBlue)
+                }
+            }
         }
         .preferredColorScheme(.dark)
     }

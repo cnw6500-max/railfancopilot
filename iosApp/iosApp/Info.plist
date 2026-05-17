@@ -22,6 +22,13 @@
 	<string>21</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Railfan Copilot uses the camera to take photos for the AI locomotive identifier.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

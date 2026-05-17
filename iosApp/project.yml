@@ -53,6 +53,9 @@ targets:
         NSCameraUsageDescription: "Railfan Copilot uses the camera to take photos for the AI locomotive identifier."
         NSPhotoLibraryUsageDescription: "Railfan Copilot accesses your photo library to select images for the AI locomotive identifier."
         NSPhotoLibraryAddUsageDescription: "Railfan Copilot saves locomotive photos to your library."
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsArbitraryLoadsInWebContent: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.ronminor.railfancopilot
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
