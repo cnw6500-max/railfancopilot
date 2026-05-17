@@ -2,7 +2,9 @@ package com.railfancopilot.app.data.repository
 
 import android.util.Base64
 import com.google.firebase.functions.FirebaseFunctions
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Thin wrapper around Firebase Callable Functions.
@@ -13,32 +15,28 @@ object BackendFunctionsClient {
 
     private val functions = FirebaseFunctions.getInstance()
 
+    // Suspends until the callable resolves; returns the response map.
+    private suspend fun call(name: String, data: Any? = null): Map<String, Any?> =
+        suspendCancellableCoroutine { cont ->
+            functions.getHttpsCallable(name).call(data)
+                .addOnSuccessListener { result ->
+                    @Suppress("UNCHECKED_CAST")
+                    cont.resume(result.getData() as? Map<String, Any?> ?: emptyMap())
+                }
+                .addOnFailureListener { cont.resumeWithException(it) }
+        }
+
     // ── AI: train symbol decoder ──────────────────────────────────────────────
 
-    /**
-     * @param symbol       Raw symbol string (e.g. "MCHI-CHLA-05").
-     * @param localContext Pre-built local-DB lookup text from [SymbolDatabase].
-     * @return Raw JSON string matching the TrainSymbolDecodeResult schema.
-     */
     suspend fun decodeTrainSymbol(symbol: String, localContext: String): String {
-        val data = hashMapOf("symbol" to symbol, "localContext" to localContext)
-        val result = functions.getHttpsCallable("decodeTrainSymbol").call(data).await()
-        @Suppress("UNCHECKED_CAST")
-        val map = result.data as? Map<String, Any?> ?: error("Unexpected response type")
+        val map = call("decodeTrainSymbol", hashMapOf("symbol" to symbol, "localContext" to localContext))
         return map["text"] as? String ?: error("Missing 'text' in decodeTrainSymbol response")
     }
 
     // ── AI: locomotive photo identifier ──────────────────────────────────────
 
-    /**
-     * @param base64Image JPEG image encoded as Base64.
-     * @return Plain-text identification result from Claude.
-     */
     suspend fun identifyLocomotive(base64Image: String): String {
-        val data = hashMapOf("base64Image" to base64Image)
-        val result = functions.getHttpsCallable("identifyLocomotive").call(data).await()
-        @Suppress("UNCHECKED_CAST")
-        val map = result.data as? Map<String, Any?> ?: error("Unexpected response type")
+        val map = call("identifyLocomotive", hashMapOf("base64Image" to base64Image))
         return map["text"] as? String ?: error("Missing 'text' in identifyLocomotive response")
     }
 
@@ -50,9 +48,7 @@ object BackendFunctionsClient {
     suspend fun getCaltrainPositions(): ByteArray = fetchGtfsRt("getCaltrainPositions")
 
     private suspend fun fetchGtfsRt(functionName: String): ByteArray {
-        val result = functions.getHttpsCallable(functionName).call().await()
-        @Suppress("UNCHECKED_CAST")
-        val map = result.data as? Map<String, Any?> ?: error("Unexpected response type")
+        val map = call(functionName)
         val b64 = map["data"] as? String ?: error("Missing 'data' in $functionName response")
         return Base64.decode(b64, Base64.DEFAULT)
     }
