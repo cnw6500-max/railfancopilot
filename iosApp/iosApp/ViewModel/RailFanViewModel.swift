@@ -70,6 +70,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         radioChannels = helper.getAARFrequencies() as? [RadioChannel] ?? []
         loadSavedLocations()
         isPremium = UserDefaults.standard.bool(forKey: "isPremium")
+        Task { await FirestoreManager.shared.ensureAuth() }
     }
 
     deinit { helper.cancel() }
@@ -79,10 +80,14 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                                      didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
         Task { @MainActor in
+            let isFirst = self.userLocation == nil
             self.userLocation = loc.coordinate
             self.refreshTrains()
             self.updateSunInfo()
             self.reverseGeocodeCurrentLocation()
+            if isFirst {
+                FirestoreManager.shared.startSpotsListener(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+            }
         }
     }
 

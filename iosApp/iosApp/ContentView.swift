@@ -2,27 +2,27 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var vm = RailFanViewModel()
+    @StateObject private var alertStore = AlertStore.shared
     @State private var showOnboarding = !UserDefaults.standard.bool(forKey: "onboardingShown")
 
     var body: some View {
         ZStack {
             TabView {
                 MapView(vm: vm)
-                    .tabItem { Label("Map",       systemImage: "map.fill") }
-                ScannerView(vm: vm)
-                    .tabItem { Label("Scanner",   systemImage: "antenna.radiowaves.left.and.right") }
-                DecoderView(vm: vm)
-                    .tabItem { Label("Decoder",   systemImage: "cpu") }
-                PhotoView(vm: vm)
-                    .tabItem { Label("Photo",     systemImage: "camera.fill") }
+                    .tabItem { Label("Map", systemImage: "map.fill") }
+
                 CommunityView(vm: vm)
                     .tabItem { Label("Community", systemImage: "person.3.fill") }
-                EncyclopediaView()
-                    .tabItem { Label("Roster",    systemImage: "book.fill") }
-                SavedLocationsView(vm: vm)
-                    .tabItem { Label("Saved",     systemImage: "bookmark.fill") }
-                SettingsView(vm: vm)
-                    .tabItem { Label("Settings",  systemImage: "gear") }
+
+                AlertsView(vm: vm)
+                    .tabItem { Label("Alerts", systemImage: "bell.fill") }
+                    .badge(alertStore.unreadCount > 0 ? alertStore.unreadCount : 0)
+
+                WatchlistView(vm: vm)
+                    .tabItem { Label("Watchlist", systemImage: "bookmark.fill") }
+
+                MoreView(vm: vm)
+                    .tabItem { Label("More", systemImage: "square.grid.2x2.fill") }
             }
             .accentColor(.railBlue)
             .onAppear { configureTabBar() }
