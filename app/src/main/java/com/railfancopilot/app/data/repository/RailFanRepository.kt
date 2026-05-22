@@ -305,16 +305,51 @@ class RailFanRepository(private val context: Context) {
         lat: Double, lon: Double, text: String,
         trainSymbol: String?, railroad: String?, tags: List<String>,
         localPhotoPath: String? = null,
-        reporterName: String = "Railfan"
+        reporterName: String = "Railfan",
+        consist: String? = null,
+        weather: String? = null,
+        locationName: String = ""
     ) {
+        val location = locationName.ifBlank { reverseGeocode(lat, lon) ?: "Unknown location" }
         FirestoreCommunityRepo.submitSighting(
             lat = lat, lon = lon,
             text = text,
             trainSymbol = trainSymbol,
             railroad = railroad,
             reporterName = reporterName,
-            location = "Unknown location"
+            location = location,
+            consist = consist,
+            weather = weather
         )
+    }
+
+    suspend fun fetchWeather(lat: Double, lon: Double): String? = try {
+        val resp = NetworkModule.openMeteoApi.getCurrent(lat, lon)
+        val c = resp.current
+        val condition = when (c.weather_code) {
+            0          -> "Clear"
+            1          -> "Mainly Clear"
+            2          -> "Partly Cloudy"
+            3          -> "Overcast"
+            45, 48     -> "Foggy"
+            51, 53, 55 -> "Drizzle"
+            61, 63, 65 -> "Rain"
+            66, 67     -> "Freezing Rain"
+            71, 73, 75 -> "Snow"
+            77         -> "Snow Grains"
+            80, 81, 82 -> "Showers"
+            85, 86     -> "Snow Showers"
+            95         -> "Thunderstorm"
+            96, 99     -> "Severe Thunderstorm"
+            else       -> "Unknown"
+        }
+        "${c.temperature_2m.toInt()}°F · $condition · ${c.wind_speed_10m.toInt()} mph wind"
+    } catch (_: Exception) { null }
+
+    suspend fun analyzeConsist(base64Image: String): Result<String> = try {
+        Result.success(BackendFunctionsClient.analyzeConsist(base64Image))
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 
     // ── AAR frequency reference ───────────────────────────────────────────────

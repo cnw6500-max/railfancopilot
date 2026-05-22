@@ -8,11 +8,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.*
+import com.railfancopilot.app.ui.screens.AlertsScreen
+import com.railfancopilot.app.ui.screens.RailAlertBanner
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -36,16 +44,18 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Decoder      : Screen("decoder",      "Decoder",   Icons.Default.SmartToy)
     object Photo        : Screen("photo",        "Photo",     Icons.Default.CameraAlt)
     object Community    : Screen("community",    "Community", Icons.Default.Group)
-    object Encyclopedia    : Screen("encyclopedia",     "Roster",  Icons.Default.Book)
-    object SavedLocations  : Screen("saved_locations",  "Saved",   Icons.Default.Bookmark)
-    object Settings        : Screen("settings",         "Settings",Icons.Default.Settings)
-    object Upgrade         : Screen("upgrade",          "Upgrade", Icons.Default.Star)
+    object Alerts       : Screen("alerts",       "Alerts",    Icons.Default.NotificationsActive)
+    object Watchlist       : Screen("watchlist",       "Watchlist", Icons.Default.Bookmarks)
+    object Encyclopedia    : Screen("encyclopedia",    "Roster",    Icons.Default.Book)
+    object SavedLocations  : Screen("saved_locations", "Saved",     Icons.Default.Bookmark)
+    object Spots           : Screen("spots",           "Spots",     Icons.Default.Place)
+    object Settings        : Screen("settings",        "Settings",  Icons.Default.Settings)
+    object Upgrade         : Screen("upgrade",         "Upgrade",   Icons.Default.Star)
+    object More            : Screen("more",            "More",      Icons.Default.GridView)
 }
 
 private val bottomNavItems = listOf(
-    Screen.Map, Screen.Scanner, Screen.Decoder,
-    Screen.Photo, Screen.Community, Screen.Encyclopedia,
-    Screen.SavedLocations, Screen.Settings
+    Screen.Map, Screen.Community, Screen.Alerts, Screen.Watchlist, Screen.More
 )
 
 class MainActivity : ComponentActivity() {
@@ -83,7 +93,7 @@ fun RailFanApp() {
     if (showPermissionDisclosure) {
         AlertDialog(
             onDismissRequest = {},
-            containerColor = androidx.compose.ui.graphics.Color(0xFF1A1A2E),
+            containerColor = BgCard,
             title = {
                 Text("Before we begin", color = com.railfancopilot.app.ui.theme.TextPrimary,
                     fontWeight = FontWeight.Medium)
@@ -97,9 +107,10 @@ fun RailFanApp() {
                         color = com.railfancopilot.app.ui.theme.TextSecondary, fontSize = 13.sp
                     )
                     listOf(
-                        "📍 Location — to show nearby trains on the map and sort scanner feeds by distance. Location data is not stored or shared.",
-                        "🔔 Notifications — to alert you when trains are approaching your location.",
-                        "📷 Camera — to take photos for the AI locomotive identifier."
+                        "📍 Location — to show nearby trains on the map, sort scanner feeds by distance, and tag community sighting reports. Sighting locations are stored on shared servers so the community feed works across devices.",
+                        "🔔 Notifications — to alert you when trains are approaching your location or a watched locomotive is spotted. An anonymous device ID is used to deliver these alerts.",
+                        "📷 Camera — to take photos for the AI locomotive identifier. Photos are sent to Anthropic's Claude API for analysis and are not stored by us.",
+                        "☁️ Firebase — community sightings, spots, and watchlist entries are stored in Google Firebase. No personal account is required."
                     ).forEach { line ->
                         Text(line, color = com.railfancopilot.app.ui.theme.TextSecondary, fontSize = 12.sp,
                             lineHeight = 18.sp)
@@ -157,11 +168,14 @@ fun RailFanApp() {
 
     val onboardingShown by vm.onboardingShown.collectAsState()
 
+    val newAlert     by vm.newRailAlert.collectAsState()
+    val unreadCount  by vm.unreadAlertCount.collectAsState()
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = BgPrimary,
-            bottomBar = { RailFanBottomBar(navController) }
+            bottomBar = { RailFanBottomBar(navController, unreadCount) }
         ) { innerPadding ->
             val onUpgrade: () -> Unit = {
                 navController.navigate(Screen.Upgrade.route) {
@@ -181,8 +195,16 @@ fun RailFanApp() {
                 composable(Screen.Decoder.route)      { DecoderScreen(vm, onUpgrade) }
                 composable(Screen.Photo.route)        { PhotoScreen(vm, onUpgrade) }
                 composable(Screen.Community.route)    { CommunityScreen(vm, onUpgrade) }
+                composable(Screen.Alerts.route)       { AlertsScreen(vm) }
+                composable(Screen.Watchlist.route)    { WatchlistScreen(vm) }
+                composable(Screen.More.route)         {
+                    MoreScreen(onNavigate = { route ->
+                        navController.navigate(route) { launchSingleTop = true }
+                    })
+                }
                 composable(Screen.Encyclopedia.route)    { EncyclopediaScreen(vm) }
                 composable(Screen.SavedLocations.route) { SavedLocationsScreen(vm, onUpgrade) }
+                composable(Screen.Spots.route)          { SpotsScreen(vm, onUpgrade) }
                 composable(Screen.Settings.route)       { SettingsScreen(vm, onUpgrade) }
                 composable(Screen.Upgrade.route)        {
                     UpgradeScreen(vm, onBack = { navController.popBackStack() })
@@ -195,6 +217,18 @@ fun RailFanApp() {
             OnboardingOverlay(
                 onFinish = { vm.markOnboardingShown() }
             )
+        }
+
+        // In-app alert banner — slides in from the top, auto-dismisses after 4 s
+        AnimatedVisibility(
+            visible = newAlert != null,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = fadeIn() + slideInVertically { -it },
+            exit  = fadeOut() + slideOutVertically { -it }
+        ) {
+            newAlert?.let { alert ->
+                RailAlertBanner(alert = alert, onDismiss = { vm.consumeNewRailAlert() })
+            }
         }
     }
 }
@@ -252,7 +286,10 @@ fun BackgroundLocationDisclosureDialog(
 }
 
 @Composable
-fun RailFanBottomBar(navController: androidx.navigation.NavHostController) {
+fun RailFanBottomBar(
+    navController: androidx.navigation.NavHostController,
+    alertUnreadCount: Int = 0
+) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     NavigationBar(
@@ -263,7 +300,25 @@ fun RailFanBottomBar(navController: androidx.navigation.NavHostController) {
         bottomNavItems.forEach { screen ->
             val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
             NavigationBarItem(
-                icon = { Icon(screen.icon, contentDescription = screen.label, modifier = Modifier.size(22.dp)) },
+                icon = {
+                    if (screen == Screen.Alerts && alertUnreadCount > 0) {
+                        BadgedBox(
+                            badge = {
+                                Badge(containerColor = RailRed) {
+                                    Text(
+                                        if (alertUnreadCount > 9) "9+" else alertUnreadCount.toString(),
+                                        fontSize = 8.sp,
+                                        color = androidx.compose.ui.graphics.Color.White
+                                    )
+                                }
+                            }
+                        ) {
+                            Icon(screen.icon, contentDescription = screen.label, modifier = Modifier.size(22.dp))
+                        }
+                    } else {
+                        Icon(screen.icon, contentDescription = screen.label, modifier = Modifier.size(22.dp))
+                    }
+                },
                 label = { Text(screen.label, fontSize = 10.sp) },
                 selected = selected,
                 onClick = {

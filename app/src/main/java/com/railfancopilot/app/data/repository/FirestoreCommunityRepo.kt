@@ -1,12 +1,18 @@
 package com.railfancopilot.app.data.repository
 
 import android.location.Location
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.messaging.FirebaseMessaging
 import com.railfancopilot.app.data.models.CommunityReport
+import com.railfancopilot.app.data.models.SightingComment
+import com.railfancopilot.app.data.models.WatchlistEntry
+import com.railfancopilot.app.data.models.WatchlistType
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 /**
@@ -164,7 +170,9 @@ object FirestoreCommunityRepo {
         trainSymbol: String?,
         railroad: String?,
         reporterName: String,
-        location: String = "Unknown location"
+        location: String = "Unknown location",
+        consist: String? = null,
+        weather: String? = null
     ) {
         val doc = hashMapOf(
             "railroad"     to (railroad ?: "Unknown"),
@@ -175,7 +183,9 @@ object FirestoreCommunityRepo {
             "longitude"    to lon,
             "reporterName" to reporterName,
             "timestampMs"  to System.currentTimeMillis().toDouble(),
-            "upvotes"      to 0L
+            "upvotes"      to 0L,
+            "consist"      to (consist ?: ""),
+            "weather"      to (weather ?: "")
         )
         db.collection(COLLECTION).add(doc)
             .addOnFailureListener { e ->
@@ -191,6 +201,44 @@ object FirestoreCommunityRepo {
             .update("upvotes", com.google.firebase.firestore.FieldValue.increment(1))
     }
 
+    // ── Comments subcollection ────────────────────────────────────────────────
+
+    fun getCommentsFlow(sightingId: String): Flow<List<SightingComment>> = callbackFlow {
+        val reg = db.collection(COLLECTION).document(sightingId)
+            .collection("comments")
+            .orderBy("timestampMs", com.google.firebase.firestore.Query.Direction.ASCENDING)
+            .addSnapshotListener { snap, err ->
+                if (err != null) return@addSnapshotListener
+                val comments = snap?.documents?.mapNotNull { doc ->
+                    try {
+                        SightingComment(
+                            id          = doc.id,
+                            userName    = doc.getString("userName") ?: "Railfan",
+                            text        = doc.getString("text") ?: "",
+                            timestampMs = doc.getDouble("timestampMs")?.toLong()
+                                          ?: doc.getLong("timestampMs")
+                                          ?: System.currentTimeMillis()
+                        )
+                    } catch (_: Exception) { null }
+                } ?: emptyList()
+                trySend(comments)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun addComment(sightingId: String, text: String, userName: String) {
+        db.collection(COLLECTION).document(sightingId).collection("comments").add(
+            hashMapOf(
+                "userName"    to userName,
+                "text"        to text,
+                "timestampMs" to System.currentTimeMillis().toDouble()
+            )
+        ).addOnFailureListener { e ->
+            if (com.railfancopilot.app.BuildConfig.DEBUG)
+                android.util.Log.e("FirestoreRepo", "addComment failed: ${e.message}", e)
+        }
+    }
+
     // ── Delete a sighting ─────────────────────────────────────────────────────
 
     fun deleteSighting(sightingId: String) {
@@ -199,5 +247,70 @@ object FirestoreCommunityRepo {
                 if (com.railfancopilot.app.BuildConfig.DEBUG)
                     android.util.Log.e("FirestoreRepo", "deleteSighting failed: ${e.message}", e)
             }
+    }
+
+    // ── Anonymous auth + FCM token registration ───────────────────────────────
+
+    suspend fun ensureAnonymousAuth(): String {
+        val auth = FirebaseAuth.getInstance()
+        if (auth.currentUser == null) {
+            auth.signInAnonymously().await()
+        }
+        val uid = auth.currentUser!!.uid
+        // Register / refresh FCM token so the watchlist fan-out function can reach this device
+        try {
+            val token = FirebaseMessaging.getInstance().token.await()
+            db.collection("users").document(uid).set(
+                hashMapOf("fcmToken" to token),
+                com.google.firebase.firestore.SetOptions.merge()
+            )
+        } catch (_: Exception) { }
+        return uid
+    }
+
+    // ── Watchlist CRUD ────────────────────────────────────────────────────────
+
+    fun getWatchlistFlow(uid: String): Flow<List<WatchlistEntry>> = callbackFlow {
+        val reg = db.collection("users").document(uid)
+            .collection("watchlist")
+            .orderBy("addedMs", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, err ->
+                if (err != null) return@addSnapshotListener
+                val entries = snap?.documents?.mapNotNull { doc ->
+                    try {
+                        WatchlistEntry(
+                            id       = doc.id,
+                            type     = if (doc.getString("type") == "SYMBOL") WatchlistType.SYMBOL
+                                       else WatchlistType.LOCO,
+                            value    = doc.getString("value") ?: "",
+                            railroad = doc.getString("railroad") ?: "",
+                            label    = doc.getString("label") ?: "",
+                            addedMs  = doc.getLong("addedMs") ?: System.currentTimeMillis()
+                        )
+                    } catch (_: Exception) { null }
+                } ?: emptyList()
+                trySend(entries)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun addWatchlistEntry(uid: String, entry: WatchlistEntry) {
+        db.collection("users").document(uid)
+            .collection("watchlist")
+            .document(entry.id)
+            .set(hashMapOf(
+                "type"     to entry.type.name,
+                "value"    to entry.value.uppercase().trim(),
+                "railroad" to entry.railroad.trim(),
+                "label"    to entry.label.trim(),
+                "addedMs"  to entry.addedMs
+            ))
+    }
+
+    fun removeWatchlistEntry(uid: String, entryId: String) {
+        db.collection("users").document(uid)
+            .collection("watchlist")
+            .document(entryId)
+            .delete()
     }
 }

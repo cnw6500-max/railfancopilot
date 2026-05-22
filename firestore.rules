@@ -31,6 +31,43 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Community railfan spots — readable by all, writable by authenticated users
+    match /railfan_spots/{spotId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['name', 'latitude', 'longitude', 'submittedBy', 'submittedMs'])
+                    && request.resource.data.latitude is number
+                    && request.resource.data.longitude is number
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 200;
+      allow update: if request.auth != null
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'photoUrls'])
+                    && request.resource.data.upvotes == resource.data.upvotes + 1
+                       || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoUrls']);
+      allow delete: if false;
+    }
+
+    // Per-user data — FCM token + watchlist. Each user can only access their own doc.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /watchlist/{entryId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Comments on sightings — any authenticated user can read/write
+    match /sightings/{sightingId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['userName', 'text', 'timestampMs'])
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 500;
+      allow delete: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

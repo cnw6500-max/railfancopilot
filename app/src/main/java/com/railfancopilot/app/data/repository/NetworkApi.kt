@@ -1,9 +1,7 @@
 package com.railfancopilot.app.data.repository
 
-import com.railfancopilot.app.BuildConfig
 import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
@@ -13,32 +11,7 @@ import java.util.concurrent.TimeUnit
 
 // Live Amtrak data: api.amtraker.com (public, no auth required)
 // Scanner: Broadcastify deprecated — WebView player via RailroadRadio.net
-
-// ── Anthropic Claude API ──────────────────────────────────────────────────────
-
-interface AnthropicApiService {
-    @POST("v1/messages")
-    @Headers("anthropic-version: 2023-06-01")
-    suspend fun sendMessage(
-        @Header("x-api-key") apiKey: String = BuildConfig.ANTHROPIC_API_KEY,
-        @Body request: AnthropicRequest
-    ): AnthropicResponse
-}
-
-data class AnthropicRequest(
-    val model: String = "claude-sonnet-4-20250514",
-    val max_tokens: Int = 1024,
-    val system: String? = null,
-    val messages: List<AnthropicMessage>
-)
-
-data class AnthropicMessage(val role: String, val content: Any)
-
-data class AnthropicResponse(
-    val content: List<AnthropicContent> = emptyList()
-)
-
-data class AnthropicContent(val type: String = "", val text: String = "")
+// Anthropic / GTFS-RT keys: proxied through Firebase Cloud Functions (functions/index.js)
 
 // ── Amtrak API (api.amtraker.com) ─────────────────────────────────────────────
 
@@ -175,26 +148,30 @@ data class MbtaRelationshipData(
     val id: String = ""
 )
 
+// ── Open-Meteo (current weather — free, no auth) ─────────────────────────────
+
+interface OpenMeteoService {
+    @GET("v1/forecast")
+    suspend fun getCurrent(
+        @Query("latitude")         lat:      Double,
+        @Query("longitude")        lon:      Double,
+        @Query("current")          vars:     String = "temperature_2m,weather_code,wind_speed_10m",
+        @Query("temperature_unit") tempUnit: String = "fahrenheit",
+        @Query("wind_speed_unit")  windUnit: String = "mph",
+        @Query("forecast_days")    days:     Int    = 1
+    ): OpenMeteoResponse
+}
+
+data class OpenMeteoResponse(val current: OpenMeteoCurrent)
+data class OpenMeteoCurrent(
+    val temperature_2m: Double,
+    val weather_code: Int,
+    val wind_speed_10m: Double
+)
+
 // ── OkHttp / Retrofit builders ─────────────────────────────────────────────
 
 object NetworkModule {
-
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
-    }
-
-    val anthropicClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .addInterceptor(loggingInterceptor)
-        .build()
-
-    val anthropicApi: AnthropicApiService = Retrofit.Builder()
-        .baseUrl("https://api.anthropic.com/")
-        .client(anthropicClient)
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-        .create(AnthropicApiService::class.java)
 
     val amtrakApi: AmtrakApiService = Retrofit.Builder()
         .baseUrl("https://api.amtraker.com/")
@@ -262,6 +239,18 @@ object NetworkModule {
         .addConverterFactory(GsonConverterFactory.create())
         .build()
         .create(SeptaApiService::class.java)
+
+    val openMeteoApi: OpenMeteoService = Retrofit.Builder()
+        .baseUrl("https://api.open-meteo.com/")
+        .client(
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .build()
+        )
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+        .create(OpenMeteoService::class.java)
 
     /** Shared OkHttpClient for raw GTFS-RT binary protobuf fetches (no Retrofit). */
     val gtfsRtClient: OkHttpClient = OkHttpClient.Builder()

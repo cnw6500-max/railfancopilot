@@ -40,6 +40,13 @@ object BackendFunctionsClient {
         return map["text"] as? String ?: error("Missing 'text' in identifyLocomotive response")
     }
 
+    // ── AI: consist analyzer ─────────────────────────────────────────────────
+
+    suspend fun analyzeConsist(base64Image: String): String {
+        val map = call("analyzeConsist", hashMapOf("base64Image" to base64Image))
+        return map["text"] as? String ?: error("Missing 'text' in analyzeConsist response")
+    }
+
     // ── GTFS-RT feeds ─────────────────────────────────────────────────────────
 
     suspend fun getMetraPositions(): ByteArray = fetchGtfsRt("getMetraPositions")

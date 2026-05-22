@@ -17,9 +17,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Audio (scanner) -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
     <!-- Google Play Billing -->
     <uses-permission android:name="com.android.vending.BILLING" />
 
@@ -33,6 +30,8 @@
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="RailFan Copilot"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -55,6 +54,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- FCM token refresh listener -->
+        <service
+            android:name="com.railfancopilot.app.data.service.RailFanMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- Scanner foreground service -->
         <service

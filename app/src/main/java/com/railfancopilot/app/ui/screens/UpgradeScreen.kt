@@ -90,7 +90,7 @@ fun UpgradeScreen(vm: RailFanViewModel, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Icon(feature.icon, contentDescription = null, tint = RailBlue, modifier = Modifier.size(22.dp))
+                        Icon(feature.icon, contentDescription = feature.title, tint = RailBlue, modifier = Modifier.size(22.dp))
                         Column {
                             Text(feature.title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Text(feature.subtitle, color = TextMuted, fontSize = 12.sp)

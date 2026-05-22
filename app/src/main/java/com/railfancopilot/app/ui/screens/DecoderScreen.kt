@@ -139,7 +139,7 @@ fun DecoderScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
 
         error?.let {
             item {
-                AlertBanner(it, RailRed, Color(0xFF1A0A0A), Color(0xFF7F1D1D))
+                AlertBanner(it, RailRed, AlertBgDanger, AlertBorderDanger)
             }
         }
 
@@ -366,13 +366,10 @@ fun ResultRow(label: String, value: String) {
 
 @Composable
 fun PriorityBadge(priority: String) {
-    val priorityBgHigh   = Color(0xFF1A3A1A)  // dark green tint — pairs with RailGreen
-    val priorityBgMedium = Color(0xFF2A2A0A)  // dark amber tint — pairs with RailAmber
-    val priorityBgLow    = Color(0xFF1A1A2A)  // dark blue-grey tint — pairs with TextSecondary
     val (bg, fg) = when (priority.lowercase()) {
-        "high"   -> priorityBgHigh   to RailGreen
-        "medium" -> priorityBgMedium to RailAmber
-        else     -> priorityBgLow    to TextSecondary
+        "high"   -> StatusBgGreen   to RailGreen
+        "medium" -> StatusBgNeutral to RailAmber
+        else     -> StatusBgBlue    to TextSecondary
     }
     Box(modifier = Modifier
         .clip(RoundedCornerShape(6.dp))

@@ -84,7 +84,7 @@ fun TrainCard(train: TrainLocation, onClick: () -> Unit = {}) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF1A3A1A))
+                        .background(StatusBgGreen)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text("ETA ${train.etaMinutes}m", color = RailGreen, fontSize = 10.sp)
@@ -95,7 +95,7 @@ fun TrainCard(train: TrainLocation, onClick: () -> Unit = {}) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF3A1A0A))
+                        .background(StatusBgAmber)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text("Delayed", color = RailAmber, fontSize = 10.sp)
@@ -162,7 +162,7 @@ fun LiveDot(isLive: Boolean, modifier: Modifier = Modifier) {
         modifier = modifier
             .size(8.dp)
             .clip(CircleShape)
-            .background(if (isLive) RailGreen else Color(0xFF374151))
+            .background(if (isLive) RailGreen else LiveDotInactive)
     )
 }
 

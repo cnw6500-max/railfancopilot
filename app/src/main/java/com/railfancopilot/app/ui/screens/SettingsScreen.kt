@@ -45,7 +45,11 @@ private val FAQ = listOf(
     "Why can't I submit a community report?" to
         "The Submit button requires a GPS fix. Wait for the location indicator to show coordinates, then try again.",
     "How do I earn achievements?" to
-        "Achievements unlock automatically as you use the app — identifying locomotives, spotting fast trains, visiting rail yards, and more. Check the Photo screen to see your progress."
+        "Achievements unlock automatically as you use the app — identifying locomotives, spotting fast trains, visiting rail yards, and more. Check the Photo screen to see your progress.",
+    "Why does the scanner use HTTP instead of HTTPS?" to
+        "Live railroad radio streams from sources like railroadradio.net are broadcast over standard HTTP audio streams — the industry standard for public scanner feeds. The audio is not encrypted at the source. No personal data is transmitted over these connections.",
+    "How do I get a refund?" to
+        "Purchases can be refunded through Google Play within 48 hours. Open the Google Play Store, tap your profile, go to Payments & subscriptions → Order history, and select Request a refund."
 )
 
 @Composable
@@ -388,6 +392,41 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             }
         }
 
+        // ── Legal ──────────────────────────────────────────────────────────────
+        item { SectionHeader("Legal & Privacy") }
+
+        item {
+            SettingsCard {
+                LinkRow(
+                    icon = Icons.Default.PrivacyTip,
+                    title = "Privacy Policy",
+                    subtitle = "How we collect and use your data",
+                    url = "https://docs.google.com/document/d/12D9nfLIoCKgYhjIm2c2ljLvksKsm6n0alWkTI3IVoH8/edit?usp=sharing"
+                )
+                SettingsDivider()
+                LinkRow(
+                    icon = Icons.Default.Gavel,
+                    title = "Terms of Service",
+                    subtitle = "App usage terms and conditions",
+                    url = "https://docs.google.com/document/d/12D9nfLIoCKgYhjIm2c2ljLvksKsm6n0alWkTI3IVoH8/edit?usp=sharing"
+                )
+                SettingsDivider()
+                LinkRow(
+                    icon = Icons.Default.CreditCard,
+                    title = "Refund Policy",
+                    subtitle = "Purchases can be refunded via Google Play within 48 hours",
+                    url = "https://support.google.com/googleplay/answer/2479637"
+                )
+                SettingsDivider()
+                LinkRow(
+                    icon = Icons.Default.Security,
+                    title = "Data & Privacy",
+                    subtitle = "Location, photos, and scanner audio stay on your device or are sent only to Anthropic's Claude API for AI analysis. Community sightings and spots are stored in Firebase. An anonymous device ID is used for watchlist notifications.",
+                    url = "https://docs.google.com/document/d/12D9nfLIoCKgYhjIm2c2ljLvksKsm6n0alWkTI3IVoH8/edit?usp=sharing"
+                )
+            }
+        }
+
         // ── About ──────────────────────────────────────────────────────────────
         item { SectionHeader("About") }
 
@@ -402,6 +441,8 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                 InfoRow(Icons.Default.Radio, "Frequency reference", "RadioReference.com · AAR standard band")
                 SettingsDivider()
                 InfoRow(Icons.Default.SmartToy, "AI features", "Claude by Anthropic")
+                SettingsDivider()
+                InfoRow(Icons.Default.Router, "Scanner streams", "Audio via HTTP — required for live railroad radio feeds")
             }
         }
 
@@ -575,5 +616,27 @@ private fun InfoRow(icon: ImageVector, label: String, value: String) {
         Icon(icon, null, tint = TextMuted, modifier = Modifier.size(18.dp))
         Text(label, color = TextSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
         Text(value, color = TextMuted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun LinkRow(icon: ImageVector, title: String, subtitle: String, url: String) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(icon, null, tint = RailBlue, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+        }
+        Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = TextMuted, modifier = Modifier.size(14.dp).padding(top = 2.dp))
     }
 }

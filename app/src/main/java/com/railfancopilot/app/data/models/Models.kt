@@ -73,7 +73,8 @@ data class Transcript(
     val channelId: String,
     val text: String,
     val timestampMs: Long,
-    val confidence: Float
+    val confidence: Float,
+    val taggedTrainSymbol: String? = null
 )
 
 // ── Photography ─────────────────────────────────────────────────────────────
@@ -139,6 +140,25 @@ data class TrainSymbolDecodeResult(
 
 // ── Community ────────────────────────────────────────────────────────────────
 
+enum class ConsistEntryType(val label: String) {
+    LOCOMOTIVE("Locomotive"),
+    BOXCAR("Boxcar"),
+    TANK_CAR("Tank Car"),
+    FLAT_CAR("Flatcar"),
+    HOPPER("Hopper"),
+    GONDOLA("Gondola"),
+    INTERMODAL("Intermodal"),
+    CABOOSE("Caboose"),
+    OTHER("Other")
+}
+
+data class ConsistEntry(
+    val type: ConsistEntryType,
+    val model: String,
+    val roadNumber: String,
+    val railroad: String
+)
+
 @Entity(tableName = "community_reports")
 data class CommunityReport(
     @PrimaryKey val id: String,
@@ -149,11 +169,14 @@ data class CommunityReport(
     val text: String,
     val trainSymbol: String?,
     val railroad: String?,
-    val tags: String, // JSON list
+    val tags: String,           // JSON list
     val timestampMs: Long,
     val upvotes: Int,
     val isVerified: Boolean,
-    val localPhotoPath: String? = null
+    val localPhotoPath: String? = null,
+    val consist: String? = null,        // JSON-serialized List<ConsistEntry>
+    val weather: String? = null,        // e.g. "72°F · Partly Cloudy · 8 mph wind"
+    val locationName: String = ""       // reverse-geocoded place name
 )
 
 // ── Encyclopedia ─────────────────────────────────────────────────────────────
@@ -207,4 +230,82 @@ data class SafetyAlert(
 
 enum class SafetyAlertType { GEOFENCE_VIOLATION, WEATHER, PRIVATE_PROPERTY, RESTRICTED_AREA }
 enum class AlertSeverity { INFO, WARNING, DANGER }
+
+// ── Sighting comments ─────────────────────────────────────────────────────────
+
+data class SightingComment(
+    val id: String,
+    val userName: String,
+    val text: String,
+    val timestampMs: Long
+)
+
+// ── Community Railfan Spots ───────────────────────────────────────────────────
+
+enum class TrainFrequency(val label: String) {
+    LIGHT("Light · <5 trains/day"),
+    MODERATE("Moderate · 5–20 trains/day"),
+    HEAVY("Heavy · 20+ trains/day"),
+    UNKNOWN("Unknown")
+}
+
+data class RailfanSpot(
+    val id: String,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val submittedBy: String,
+    val submittedMs: Long,
+    val railroad: String = "",
+    val subdivision: String = "",
+    val notes: String = "",
+    val photoAngles: String = "",
+    val safetyNotes: String = "",
+    val parkingNotes: String = "",
+    val scannerFrequency: String = "",
+    val seasonalNotes: String = "",
+    val trainFrequency: TrainFrequency = TrainFrequency.UNKNOWN,
+    val isPublicProperty: Boolean = true,
+    val hasParking: Boolean = false,
+    val hasRestrooms: Boolean = false,
+    val hasFood: Boolean = false,
+    val hasShade: Boolean = false,
+    val upvotes: Int = 0,
+    val photoUrls: List<String> = emptyList()
+)
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+enum class WatchlistType { SYMBOL, LOCO }
+
+data class WatchlistEntry(
+    val id: String,
+    val type: WatchlistType,
+    val value: String,          // train symbol (e.g. "QCHLA") or road number (e.g. "4030")
+    val railroad: String = "",  // optional filter for LOCO type
+    val label: String = "",     // display label, auto-generated if blank
+    val addedMs: Long = System.currentTimeMillis()
+)
+
+// ── Railfan Alerts ────────────────────────────────────────────────────────────
+
+enum class RailAlertType(val label: String, val emoji: String) {
+    RARE_LOCO("Rare Locomotive", "⭐"),
+    HOT_TRAIN("Hot Train", "🔥"),
+    HIGH_SPEED("High Speed", "⚡"),
+    SCANNER_ACTIVITY("Scanner Activity", "📻"),
+    TRAIN_APPROACHING("Train Approaching", "🚂")
+}
+
+data class RailAlert(
+    val id: String,
+    val type: RailAlertType,
+    val title: String,
+    val message: String,
+    val timestampMs: Long,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val trainSymbol: String? = null,
+    val isRead: Boolean = false
+)
 

@@ -119,6 +119,15 @@ private val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/** v6 → v7: added consist, weather, locationName columns to community_reports. */
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE community_reports ADD COLUMN consist TEXT")
+        db.execSQL("ALTER TABLE community_reports ADD COLUMN weather TEXT")
+        db.execSQL("ALTER TABLE community_reports ADD COLUMN locationName TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 // ── Database ─────────────────────────────────────────────────────────────────
 
 @Database(
@@ -129,7 +138,7 @@ private val MIGRATION_5_6 = object : Migration(5, 6) {
         LocoIdEntry::class,
         SymbolDecodeEntry::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class RailFanDatabase : RoomDatabase() {
@@ -149,7 +158,7 @@ abstract class RailFanDatabase : RoomDatabase() {
                     RailFanDatabase::class.java,
                     "railfan_db"
                 )
-                .addMigrations(MIGRATION_5_6)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration(dropAllTables = true)   // fallback for pre-v5 installs
                 .build().also { INSTANCE = it }
             }

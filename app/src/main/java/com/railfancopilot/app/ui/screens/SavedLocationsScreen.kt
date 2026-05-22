@@ -77,7 +77,7 @@ fun SavedLocationsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     contentColor = RailBlue,
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Save new location", modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -154,7 +154,7 @@ fun SavedLocationCard(location: SavedLocation, onDelete: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Icon(Icons.Default.Bookmark, contentDescription = null, tint = RailBlue, modifier = Modifier.size(20.dp))
+        Icon(Icons.Default.Bookmark, contentDescription = "Saved location", tint = RailBlue, modifier = Modifier.size(20.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(location.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)

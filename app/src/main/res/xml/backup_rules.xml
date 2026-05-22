@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Backup exclusion rules for Android 11 and below (android:fullBackupContent).
+    Excludes Room databases, DataStore preferences, and saved photos from cloud backup
+    to prevent location history, photo metadata, and API-derived data from being
+    restored to a different device or user account without consent.
+-->
+<full-backup-content>
+    <!-- Room databases: saved locations, photos, decode history, loco ID history -->
+    <exclude domain="database" path="." />
+    <!-- DataStore / SharedPreferences: settings, achievement state -->
+    <exclude domain="sharedpref" path="." />
+    <!-- Locally saved photos from Photo Tagger and community reports -->
+    <exclude domain="file" path="photos" />
+</full-backup-content>

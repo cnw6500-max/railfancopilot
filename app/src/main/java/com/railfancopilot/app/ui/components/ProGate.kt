@@ -42,7 +42,7 @@ fun ProGateScreen(
                     .border(0.5.dp, BorderLight, RoundedCornerShape(22.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = RailBlue, modifier = Modifier.size(36.dp))
+                Icon(Icons.Default.Lock, contentDescription = "Pro feature locked", tint = RailBlue, modifier = Modifier.size(36.dp))
             }
 
             Column(

@@ -52,6 +52,11 @@ private val PREF_CALTRAIN_ENABLED          = booleanPreferencesKey("caltrain_ena
 private val PREF_SOUND_TRANSIT_ENABLED     = booleanPreferencesKey("sound_transit_enabled")     // default false
 private val PREF_USER_NAME                 = stringPreferencesKey("user_name")                    // default "Railfan"
 private val PREF_DECODE_COUNT              = intPreferencesKey("decode_count")                    // cumulative successful decodes
+private val PREF_ALERT_RARE_LOCO   = booleanPreferencesKey("alert_rare_loco")
+private val PREF_ALERT_HOT_TRAIN   = booleanPreferencesKey("alert_hot_train")
+private val PREF_ALERT_HIGH_SPEED  = booleanPreferencesKey("alert_high_speed")
+private val PREF_ALERT_SCANNER     = booleanPreferencesKey("alert_scanner")
+private val PREF_ALERT_APPROACHING = booleanPreferencesKey("alert_approaching")
 
 private val EARNED_IDS_KEY = stringSetPreferencesKey("earned_ids")
 private val VISITED_YARDS_KEY = stringSetPreferencesKey("visited_yards")
@@ -153,6 +158,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _caltrainEnabled.value       = prefs[PREF_CALTRAIN_ENABLED]           ?: false
             _soundTransitEnabled.value   = prefs[PREF_SOUND_TRANSIT_ENABLED]      ?: false
             _userName.value              = prefs[PREF_USER_NAME]                  ?: "Railfan"
+            _alertRareLoco.value         = prefs[PREF_ALERT_RARE_LOCO]            ?: true
+            _alertHotTrain.value         = prefs[PREF_ALERT_HOT_TRAIN]            ?: true
+            _alertHighSpeed.value        = prefs[PREF_ALERT_HIGH_SPEED]           ?: true
+            _alertScanner.value          = prefs[PREF_ALERT_SCANNER]              ?: true
+            _alertApproaching.value      = prefs[PREF_ALERT_APPROACHING]          ?: true
         }
     }
 
@@ -229,6 +239,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             loadMapFeatures(location.latitude, location.longitude)
             refreshSunInfo(location.latitude, location.longitude)
             refreshTrains()
+            startSpotsListener()
         }
         triggerGeofenceCheck(location)
         checkYardProximity(location)
@@ -415,7 +426,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     val activeChannelId: StateFlow<String?> = _activeChannelId.asStateFlow()
 
     private val _transcripts = MutableStateFlow<List<Transcript>>(emptyList())
-    val transcripts: StateFlow<List<Transcript>> = _transcripts.asStateFlow()
+
+    /** Last 10 transmissions, newest first. */
+    val recentTransmissions: StateFlow<List<Transcript>> = _transcripts
+        .map { it.reversed() }
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private val _isScannerPlaying = MutableStateFlow(false)
     val isScannerPlaying: StateFlow<Boolean> = _isScannerPlaying.asStateFlow()
@@ -432,9 +447,20 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         _activeChannelId.value = null
     }
 
-    private fun addTranscript(channelId: String, text: String) {
-        val new = Transcript(UUID.randomUUID().toString(), channelId, text, System.currentTimeMillis(), 0.92f)
-        _transcripts.value = (_transcripts.value + new).takeLast(50)
+    fun logTransmission(channelId: String, note: String, trainSymbol: String?) {
+        val entry = Transcript(UUID.randomUUID().toString(), channelId, note, System.currentTimeMillis(), 1.0f, trainSymbol)
+        _transcripts.value = (_transcripts.value + entry).takeLast(10)
+        if (_alertScanner.value && note.isNotBlank()) {
+            val channelName = _channels.value.find { it.id == channelId }?.name ?: channelId
+            fireRailAlert(RailAlert(
+                id          = "scanner_${entry.id}",
+                type        = RailAlertType.SCANNER_ACTIVITY,
+                title       = "Scanner Activity",
+                message     = "$channelName: ${note.take(80)}",
+                timestampMs = entry.timestampMs,
+                trainSymbol = trainSymbol
+            ))
+        }
     }
 
     // ── AI Decoder ────────────────────────────────────────────────────────────
@@ -636,6 +662,41 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         _locoIdError.value = null
     }
 
+    // ── Consist Analyzer ──────────────────────────────────────────────────────
+
+    private val _isAnalyzingConsist = MutableStateFlow(false)
+    val isAnalyzingConsist: StateFlow<Boolean> = _isAnalyzingConsist.asStateFlow()
+
+    private val _consistResult = MutableStateFlow<String?>(null)
+    val consistResult: StateFlow<String?> = _consistResult.asStateFlow()
+
+    private val _consistError = MutableStateFlow<String?>(null)
+    val consistError: StateFlow<String?> = _consistError.asStateFlow()
+
+    private var consistJob: kotlinx.coroutines.Job? = null
+
+    fun analyzeConsist(base64Image: String) {
+        consistJob?.cancel()
+        consistJob = viewModelScope.launch {
+            _isAnalyzingConsist.value = true
+            _consistError.value = null
+            try {
+                val result = repo.analyzeConsist(base64Image)
+                result.onSuccess { _consistResult.value = it }
+                    .onFailure { _consistError.value = "Consist analysis failed. Check your connection and try again." }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _consistError.value = "Consist analysis failed. Check your connection and try again."
+            } finally {
+                _isAnalyzingConsist.value = false
+            }
+        }
+    }
+
+    fun clearConsistResult() { _consistResult.value = null; _consistError.value = null }
+    fun cancelConsistAnalysis() { consistJob?.cancel(); _isAnalyzingConsist.value = false }
+
     // ── Community ─────────────────────────────────────────────────────────────
 
     private val _reportRadiusMiles = MutableStateFlow(50.0)
@@ -657,14 +718,33 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             .map { dbReports -> dbReports.sortedByDescending { it.timestampMs } }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun submitReport(lat: Double, lon: Double, text: String, trainSymbol: String?, railroad: String?, tags: List<String>, localPhotoPath: String? = null) {
+    fun submitReport(
+        lat: Double, lon: Double, text: String,
+        trainSymbol: String?, railroad: String?, tags: List<String>,
+        localPhotoPath: String? = null,
+        consist: String? = null,
+        weather: String? = null,
+        locationName: String = ""
+    ) {
         viewModelScope.launch {
-            repo.addReport(lat, lon, text, trainSymbol, railroad, tags, localPhotoPath, _userName.value)
+            repo.addReport(lat, lon, text, trainSymbol, railroad, tags, localPhotoPath, _userName.value, consist, weather, locationName)
         }
     }
 
+    suspend fun fetchWeather(lat: Double, lon: Double): String? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            repo.fetchWeather(lat, lon)
+        }
+
     fun deleteReport(reportId: String) {
         repo.deleteCommunityReport(reportId)
+    }
+
+    fun getCommentsFlow(sightingId: String) =
+        com.railfancopilot.app.data.repository.FirestoreCommunityRepo.getCommentsFlow(sightingId)
+
+    fun postComment(sightingId: String, text: String) {
+        com.railfancopilot.app.data.repository.FirestoreCommunityRepo.addComment(sightingId, text, _userName.value)
     }
 
     fun postPhotoToCommunity(photo: PhotoMetadata) {
@@ -689,6 +769,126 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             repo.reverseGeocode(lat, lon)
         }
+
+    // ── Railfan Alerts ────────────────────────────────────────────────────────
+
+    private val _railAlerts = MutableStateFlow<List<RailAlert>>(emptyList())
+    val railAlerts: StateFlow<List<RailAlert>> = _railAlerts.asStateFlow()
+
+    val unreadAlertCount: StateFlow<Int> = _railAlerts
+        .map { list -> list.count { !it.isRead } }
+        .stateIn(viewModelScope, SharingStarted.Lazily, 0)
+
+    private val _newRailAlert = MutableStateFlow<RailAlert?>(null)
+    val newRailAlert: StateFlow<RailAlert?> = _newRailAlert.asStateFlow()
+    fun consumeNewRailAlert() { _newRailAlert.value = null }
+
+    private val _alertRareLoco   = MutableStateFlow(true)
+    val alertRareLoco: StateFlow<Boolean>   = _alertRareLoco.asStateFlow()
+
+    private val _alertHotTrain   = MutableStateFlow(true)
+    val alertHotTrain: StateFlow<Boolean>   = _alertHotTrain.asStateFlow()
+
+    private val _alertHighSpeed  = MutableStateFlow(true)
+    val alertHighSpeed: StateFlow<Boolean>  = _alertHighSpeed.asStateFlow()
+
+    private val _alertScanner    = MutableStateFlow(true)
+    val alertScanner: StateFlow<Boolean>    = _alertScanner.asStateFlow()
+
+    private val _alertApproaching = MutableStateFlow(true)
+    val alertApproaching: StateFlow<Boolean> = _alertApproaching.asStateFlow()
+
+    fun setAlertRareLoco(on: Boolean)   { _alertRareLoco.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_RARE_LOCO]   = on } } }
+    fun setAlertHotTrain(on: Boolean)   { _alertHotTrain.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HOT_TRAIN]   = on } } }
+    fun setAlertHighSpeed(on: Boolean)  { _alertHighSpeed.value = on;  viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HIGH_SPEED]  = on } } }
+    fun setAlertScanner(on: Boolean)    { _alertScanner.value = on;    viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_SCANNER]     = on } } }
+    fun setAlertApproaching(on: Boolean){ _alertApproaching.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_APPROACHING] = on } } }
+
+    fun markAlertRead(id: String) {
+        _railAlerts.value = _railAlerts.value.map { if (it.id == id) it.copy(isRead = true) else it }
+    }
+    fun markAllAlertsRead() {
+        _railAlerts.value = _railAlerts.value.map { it.copy(isRead = true) }
+    }
+    fun clearAlerts() { _railAlerts.value = emptyList() }
+
+    private val RAILFAN_ALERTS_CHANNEL = "railfan_alerts"
+    private val seenReportIds = mutableSetOf<String>()
+    private var alertsSeeded  = false
+
+    private fun fireRailAlert(alert: RailAlert) {
+        _railAlerts.value = (listOf(alert) + _railAlerts.value).take(50)
+        _newRailAlert.value = alert
+        val notifMgr = getApplication<Application>().getSystemService(NotificationManager::class.java)
+        val notif = NotificationCompat.Builder(getApplication(), RAILFAN_ALERTS_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("${alert.type.emoji} ${alert.title}")
+            .setContentText(alert.message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        notifMgr.notify(alert.id.hashCode(), notif)
+    }
+
+    private fun checkCommunityReportsForAlerts(reports: List<CommunityReport>) {
+        if (!alertsSeeded) {
+            seenReportIds.addAll(reports.map { it.id })
+            alertsSeeded = true
+            return
+        }
+        if (!_alertRareLoco.value && !_alertHotTrain.value) return
+        val newReports = reports.filter { it.id !in seenReportIds }
+        newReports.forEach { report ->
+            seenReportIds.add(report.id)
+            val symbol = report.trainSymbol?.uppercase() ?: ""
+            val text   = report.text.lowercase()
+
+            if (_alertHotTrain.value) {
+                val isHot = symbol.startsWith("Z") ||
+                            symbol.startsWith("Q") ||
+                            symbol.contains("IMX") ||
+                            text.contains("z train") ||
+                            text.contains("hotshot") ||
+                            text.contains("priority intermodal")
+                if (isHot) {
+                    val loc = if (report.locationName.isNotBlank()) " at ${report.locationName}" else ""
+                    fireRailAlert(RailAlert(
+                        id          = "hot_${report.id}",
+                        type        = RailAlertType.HOT_TRAIN,
+                        title       = "Hot Train Spotted",
+                        message     = "${symbol.ifBlank { "Expedited train" }} spotted$loc",
+                        timestampMs = report.timestampMs,
+                        latitude    = report.latitude,
+                        longitude   = report.longitude,
+                        trainSymbol = report.trainSymbol
+                    ))
+                    return@forEach
+                }
+            }
+
+            if (_alertRareLoco.value) {
+                val heritageKw = listOf("heritage", "fallen flag", "spirit of", "rebuild",
+                    "foreign power", "patched", "warbonnet", "commemorative", "daylight",
+                    "retro", "historic paint", "special paint", "cn power", "cp power",
+                    "ferromex", "via rail", "mexican power", "foreign unit")
+                val foreignRR  = setOf("CN", "CP", "CPKC", "FERROMEX", "VIA", "KCS DE MEXICO")
+                val isRare = heritageKw.any { text.contains(it) } ||
+                             report.railroad?.uppercase() in foreignRR
+                if (isRare) {
+                    fireRailAlert(RailAlert(
+                        id          = "rare_${report.id}",
+                        type        = RailAlertType.RARE_LOCO,
+                        title       = "Rare Locomotive Spotted",
+                        message     = report.text.take(120),
+                        timestampMs = report.timestampMs,
+                        latitude    = report.latitude,
+                        longitude   = report.longitude,
+                        trainSymbol = report.trainSymbol
+                    ))
+                }
+            }
+        }
+    }
 
     // ── Location search (Nominatim) ───────────────────────────────────────────
 
@@ -896,6 +1096,9 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         mgr.createNotificationChannel(NotificationChannel(
             GOLDENHOUR_CHANNEL, "Golden Hour Alerts", NotificationManager.IMPORTANCE_DEFAULT
         ).apply { description = "Alerts at sunrise and sunset golden hour for photography" })
+        mgr.createNotificationChannel(NotificationChannel(
+            RAILFAN_ALERTS_CHANNEL, "Railfan Alerts", NotificationManager.IMPORTANCE_DEFAULT
+        ).apply { description = "Alerts for rare locomotives, hot trains, high speed, and scanner activity" })
     }
 
     private fun checkApproachNotifications(trains: List<TrainLocation>) {
@@ -907,15 +1110,38 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         approaching.forEach { train ->
             if (train.id !in notifiedTrainIds) {
                 notifiedTrainIds.add(train.id)
-                val notif = NotificationCompat.Builder(getApplication(), APPROACH_CHANNEL)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle("Train Approaching")
-                    .setContentText("${train.symbol} · ETA ${train.etaMinutes} min")
-                    .setSubText(train.railroad.displayName)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(true)
-                    .build()
-                notifMgr.notify(train.id.hashCode(), notif)
+                // Reverse-geocode in background so notification carries a city name
+                viewModelScope.launch {
+                    val city = try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            repo.reverseGeocode(train.latitude, train.longitude)
+                        }
+                    } catch (_: Exception) { null }
+                    val nearLabel = city ?: train.subdivision ?: "your area"
+                    val eta = train.etaMinutes
+                    val body = "${train.symbol} · ETA ${eta} min"
+                    val notif = NotificationCompat.Builder(getApplication(), APPROACH_CHANNEL)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle("Train approaching $nearLabel")
+                        .setContentText(body)
+                        .setSubText(train.railroad.displayName)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setAutoCancel(true)
+                        .build()
+                    notifMgr.notify(train.id.hashCode(), notif)
+                    if (_alertApproaching.value) {
+                        fireRailAlert(RailAlert(
+                            id          = "approach_${train.id}",
+                            type        = RailAlertType.TRAIN_APPROACHING,
+                            title       = "Train approaching $nearLabel",
+                            message     = "$body · ${train.railroad.displayName}",
+                            timestampMs = System.currentTimeMillis(),
+                            latitude    = train.latitude,
+                            longitude   = train.longitude,
+                            trainSymbol = train.symbol
+                        ))
+                    }
+                }
             }
         }
 
@@ -928,7 +1154,25 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         if (trains.isEmpty()) return
 
         // Speed Demon: any live train over 79 mph
-        if (trains.any { it.speedMph > 79 }) unlockAchievement("a5")
+        if (trains.any { it.speedMph > 79 }) {
+            unlockAchievement("a5")
+            if (_alertHighSpeed.value) {
+                val fast = trains.filter { it.speedMph > 79 }.maxByOrNull { it.speedMph }!!
+                val alertId = "speed_${fast.id}_${fast.speedMph}"
+                if (_railAlerts.value.none { it.id == alertId }) {
+                    fireRailAlert(RailAlert(
+                        id          = alertId,
+                        type        = RailAlertType.HIGH_SPEED,
+                        title       = "High-Speed Train",
+                        message     = "${fast.symbol} running ${fast.speedMph} mph · ${fast.railroad.displayName}",
+                        timestampMs = System.currentTimeMillis(),
+                        latitude    = fast.latitude,
+                        longitude   = fast.longitude,
+                        trainSymbol = fast.symbol
+                    ))
+                }
+            }
+        }
 
         // Grain Rush: Aug–Oct, any train spotted
         val month = Calendar.getInstance().get(Calendar.MONTH) + 1 // 1-based
@@ -962,6 +1206,105 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // ── Community Spots ───────────────────────────────────────────────────────
+
+    private val _communitySpots = MutableStateFlow<List<com.railfancopilot.app.data.models.RailfanSpot>>(emptyList())
+    val communitySpots: StateFlow<List<com.railfancopilot.app.data.models.RailfanSpot>> = _communitySpots.asStateFlow()
+
+    private val _isSubmittingSpot = MutableStateFlow(false)
+    val isSubmittingSpot: StateFlow<Boolean> = _isSubmittingSpot.asStateFlow()
+
+    private val _spotSubmitError = MutableStateFlow<String?>(null)
+    val spotSubmitError: StateFlow<String?> = _spotSubmitError.asStateFlow()
+
+    private var spotsListenerJob: kotlinx.coroutines.Job? = null
+
+    fun startSpotsListener() {
+        if (spotsListenerJob?.isActive == true) return
+        val loc = _userLocation.value ?: return
+        spotsListenerJob = viewModelScope.launch {
+            com.railfancopilot.app.data.repository.FirestoreSpotsRepo
+                .getSpotsFlow(loc.latitude, loc.longitude)
+                .collect { _communitySpots.value = it }
+        }
+    }
+
+    fun submitSpot(
+        spot: com.railfancopilot.app.data.models.RailfanSpot,
+        photoBytes: ByteArray? = null
+    ) {
+        viewModelScope.launch {
+            _isSubmittingSpot.value = true
+            _spotSubmitError.value = null
+            try {
+                com.railfancopilot.app.data.repository.FirestoreSpotsRepo.submitSpot(spot, photoBytes)
+            } catch (e: Exception) {
+                _spotSubmitError.value = "Failed to submit spot. Check your connection and try again."
+            } finally {
+                _isSubmittingSpot.value = false
+            }
+        }
+    }
+
+    fun upvoteSpot(spotId: String) {
+        com.railfancopilot.app.data.repository.FirestoreSpotsRepo.upvoteSpot(spotId)
+    }
+
+    fun addSpotPhoto(spotId: String, photoBytes: ByteArray) {
+        viewModelScope.launch {
+            try {
+                com.railfancopilot.app.data.repository.FirestoreSpotsRepo.addPhoto(spotId, photoBytes)
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun clearSpotSubmitError() { _spotSubmitError.value = null }
+
+    // ── Watchlist ──────────────────────────────────────────────────────────────
+
+    private val WATCHLIST_CHANNEL = "watchlist_alerts"
+
+    private val _currentUserId = MutableStateFlow<String?>(null)
+    val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
+
+    private val _watchlist = MutableStateFlow<List<com.railfancopilot.app.data.models.WatchlistEntry>>(emptyList())
+    val watchlist: StateFlow<List<com.railfancopilot.app.data.models.WatchlistEntry>> = _watchlist.asStateFlow()
+
+    private var watchlistListenerJob: kotlinx.coroutines.Job? = null
+
+    private fun initAuth() {
+        viewModelScope.launch {
+            try {
+                val uid = com.railfancopilot.app.data.repository.FirestoreCommunityRepo.ensureAnonymousAuth()
+                _currentUserId.value = uid
+                // Start listening to this user's watchlist
+                watchlistListenerJob?.cancel()
+                watchlistListenerJob = viewModelScope.launch {
+                    com.railfancopilot.app.data.repository.FirestoreCommunityRepo
+                        .getWatchlistFlow(uid)
+                        .collect { _watchlist.value = it }
+                }
+                // Create watchlist notification channel
+                val mgr = getApplication<Application>().getSystemService(android.app.NotificationManager::class.java)
+                mgr.createNotificationChannel(android.app.NotificationChannel(
+                    WATCHLIST_CHANNEL, "Watchlist Alerts", android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply { description = "Alerts when a watched locomotive or train symbol is spotted" })
+            } catch (e: Exception) {
+                android.util.Log.e("RailFanVM", "Auth failed: ${e.message}", e)
+            }
+        }
+    }
+
+    fun addToWatchlist(entry: com.railfancopilot.app.data.models.WatchlistEntry) {
+        val uid = _currentUserId.value ?: return
+        com.railfancopilot.app.data.repository.FirestoreCommunityRepo.addWatchlistEntry(uid, entry)
+    }
+
+    fun removeFromWatchlist(entryId: String) {
+        val uid = _currentUserId.value ?: return
+        com.railfancopilot.app.data.repository.FirestoreCommunityRepo.removeWatchlistEntry(uid, entryId)
+    }
+
     // ── Init ──────────────────────────────────────────────────────────────────
 
     init {
@@ -972,6 +1315,8 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         loadEncyclopedia()
         startAutoRefresh()   // waits for GPS fix before first train fetch
         startSunRefreshLoop()
+        initAuth()
+        viewModelScope.launch { communityReports.collect { checkCommunityReportsForAlerts(it) } }
         // Load symbol database off the main thread
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             com.railfancopilot.app.utils.SymbolDatabase.load(getApplication())

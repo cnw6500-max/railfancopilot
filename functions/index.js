@@ -2,6 +2,9 @@
 
 const functions = require('firebase-functions');
 const fetch = require('node-fetch');
+const admin = require('firebase-admin');
+
+admin.initializeApp();
 
 // ── Anthropic helper ──────────────────────────────────────────────────────────
 
@@ -113,6 +116,46 @@ Read all visible text, logos, and signage in the image carefully before answerin
     return { text: resp.content?.[0]?.text ?? 'Unable to identify locomotive.' };
 });
 
+// ── analyzeConsist ────────────────────────────────────────────────────────────
+
+exports.analyzeConsist = functions.runWith({ secrets: ['ANTHROPIC_KEY'] }).https.onCall(async (data) => {
+    const base64Image = data.base64Image;
+    if (!base64Image) throw new functions.https.HttpsError('invalid-argument', 'base64Image is required');
+
+    const resp = await callAnthropic({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        system: `You are an expert railfan with encyclopedic knowledge of North American locomotive models and freight car types. You identify consists precisely — listing each unit from front to back with model, road number, railroad, and notable features. You know the difference between an ES44AC and an ES44DC, between a 5-bay covered hopper and a 3-bay, between a 53-foot well car and a 48-foot platform. You read every visible number, logo, and marking before answering.`,
+        messages: [{
+            role: 'user',
+            content: [
+                {
+                    type: 'image',
+                    source: { type: 'base64', media_type: 'image/jpeg', data: base64Image },
+                },
+                {
+                    type: 'text',
+                    text: `Analyze this consist photo. List every unit you can identify from front to back.
+
+For each unit use this format:
+**[N]. [Model]**
+- Railroad: [name shown on unit]
+- Road #: [number if visible, or "Not visible"]
+- Type: [Locomotive / Boxcar / Tank Car / Hopper / Gondola / Flatcar / Intermodal Well Car / Caboose / Other]
+- Notes: [paint scheme, heritage livery, condition, special features]
+
+Finish with a one-line consist summary, e.g.:
+**Consist:** 2× BNSF ES44AC + 1× BNSF C44-9W + 94 grain hoppers (mixed reporting marks)
+
+If the consist extends out of frame, note it. If a unit is partially obscured, describe what you can. If no train is clearly visible, say so.`,
+                },
+            ],
+        }],
+    });
+
+    return { text: resp.content?.[0]?.text ?? 'Unable to analyze consist.' };
+});
+
 // ── GTFS-RT helpers ───────────────────────────────────────────────────────────
 
 async function fetchGtfsRt(url, headers) {
@@ -160,3 +203,86 @@ exports.getCaltrainPositions = functions.https.onCall(async () => {
         {}
     );
 });
+
+// ── watchlistSightingAlert ────────────────────────────────────────────────────
+// Fires when any new sighting is written to the "sightings" collection.
+// Scans all users' watchlist subcollections for matching symbols or road numbers,
+// then sends an FCM push to each matched user's device.
+
+exports.watchlistSightingAlert = functions.firestore
+    .document('sightings/{sightingId}')
+    .onCreate(async (snap) => {
+        const data = snap.data();
+        const symbol = (data.trainSymbol || '').toUpperCase().trim();
+        const notes  = (data.notes || '').toUpperCase();
+        const location = data.location || 'Unknown location';
+        const reporter = data.reporterName || 'A railfan';
+
+        if (!symbol && !notes) return null;
+
+        const db = admin.firestore();
+        const messaging = admin.messaging();
+
+        // Query watchlist entries across all users using a collection group query.
+        // Two passes: one for SYMBOL matches, one for LOCO keyword matches.
+        const matchedTokens = new Set();
+
+        // Pass 1: exact symbol match
+        if (symbol) {
+            const symbolSnap = await db.collectionGroup('watchlist')
+                .where('type', '==', 'SYMBOL')
+                .where('value', '==', symbol)
+                .get();
+
+            for (const entryDoc of symbolSnap.docs) {
+                // Parent path: users/{uid}/watchlist/{entryId}
+                const uid = entryDoc.ref.parent.parent.id;
+                const userDoc = await db.collection('users').doc(uid).get();
+                const token = userDoc.exists && userDoc.data().fcmToken;
+                if (token) matchedTokens.add(token);
+            }
+        }
+
+        // Pass 2: road number keyword match in notes or symbol
+        const locoSnap = await db.collectionGroup('watchlist')
+            .where('type', '==', 'LOCO')
+            .get();
+
+        for (const entryDoc of locoSnap.docs) {
+            const entryData = entryDoc.data();
+            const watchedNum = (entryData.value || '').toUpperCase().trim();
+            const watchedRR  = (entryData.railroad || '').toUpperCase().trim();
+            if (!watchedNum) continue;
+
+            const inSymbol = symbol.includes(watchedNum);
+            const inNotes  = notes.includes(watchedNum);
+            const rrMatch  = !watchedRR || notes.includes(watchedRR) || symbol.includes(watchedRR);
+
+            if ((inSymbol || inNotes) && rrMatch) {
+                const uid = entryDoc.ref.parent.parent.id;
+                const userDoc = await db.collection('users').doc(uid).get();
+                const token = userDoc.data && userDoc.data() && userDoc.data().fcmToken;
+                if (token) matchedTokens.add(token);
+            }
+        }
+
+        if (matchedTokens.size === 0) return null;
+
+        const title = symbol
+            ? `🔍 ${symbol} spotted!`
+            : `🔍 Watchlist match`;
+        const body = `${reporter} spotted it at ${location}`;
+
+        // Send individually so one bad token doesn't block others
+        const sends = [...matchedTokens].map(token =>
+            messaging.send({
+                token,
+                notification: { title, body },
+                android: { priority: 'high', notification: { channelId: 'watchlist_alerts' } },
+                apns: { payload: { aps: { sound: 'default' } } },
+            }).catch(() => null)  // ignore invalid/expired tokens
+        );
+
+        await Promise.all(sends);
+        return null;
+    });

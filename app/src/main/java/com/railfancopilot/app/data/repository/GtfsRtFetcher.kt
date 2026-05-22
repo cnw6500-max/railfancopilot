@@ -2,6 +2,7 @@ package com.railfancopilot.app.data.repository
 
 import android.location.Location
 import android.util.Log
+import com.railfancopilot.app.BuildConfig
 import com.railfancopilot.app.data.models.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -48,7 +49,7 @@ object GtfsRtFetcher {
                 .execute()
                 .use { resp ->
                     if (!resp.isSuccessful) {
-                        Log.w("GtfsRtFetcher", "$tag HTTP ${resp.code}")
+                        if (BuildConfig.DEBUG) Log.w("GtfsRtFetcher", "$tag HTTP ${resp.code}")
                         return@withContext emptyList()
                     }
                     resp.body?.bytes() ?: return@withContext emptyList()
@@ -104,8 +105,69 @@ object GtfsRtFetcher {
             }
 
         } catch (e: Exception) {
-            Log.e("GtfsRtFetcher", "$tag failed: ${e.javaClass.simpleName}: ${e.message}")
+            if (BuildConfig.DEBUG) Log.e("GtfsRtFetcher", "$tag failed: ${e.javaClass.simpleName}: ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * Parse and distance-filter a pre-fetched GTFS-RT binary (from Cloud Functions).
+     * Identical mapping logic to [fetch] but skips the HTTP layer.
+     */
+    fun parseAndFilter(
+        bytes: ByteArray,
+        railroad: Railroad,
+        agencyLabel: String,
+        userLat: Double,
+        userLon: Double,
+        radiusMiles: Double,
+        etaFn: (Double, Double, Double, Double, Int, Int) -> Int?
+    ): List<TrainLocation> {
+        val vehicles = GtfsRtProtoParser.parse(bytes)
+        val distBuf  = FloatArray(1)
+
+        return vehicles.mapNotNull { v ->
+            if (v.latitude == 0f && v.longitude == 0f) return@mapNotNull null
+
+            val lat = v.latitude.toDouble()
+            val lon = v.longitude.toDouble()
+
+            Location.distanceBetween(userLat, userLon, lat, lon, distBuf)
+            if (distBuf[0] / 1609.34 > radiusMiles) return@mapNotNull null
+
+            val speedMph = (v.speedMs * 2.23694f).toInt()
+            val heading  = v.bearing.toInt()
+
+            val lineLabel = v.routeId
+                .removePrefix("$agencyLabel-")
+                .removePrefix("${agencyLabel}_")
+                .replace("-", " ")
+                .replace("_", " ")
+                .trim()
+                .ifBlank { v.entityId }
+
+            val status = when {
+                v.currentStatus == 1 -> TrainStatus.STOPPED
+                speedMph > 0         -> TrainStatus.ON_TIME
+                else                 -> TrainStatus.UNKNOWN
+            }
+
+            TrainLocation(
+                id             = "$agencyLabel-${v.entityId}",
+                symbol         = "$agencyLabel $lineLabel".trim(),
+                railroad       = railroad,
+                latitude       = lat,
+                longitude      = lon,
+                speedMph       = speedMph,
+                headingDegrees = heading,
+                etaMinutes     = if (speedMph > 0) etaFn(userLat, userLon, lat, lon, speedMph, heading) else null,
+                status         = status,
+                consist        = emptyList(),
+                origin         = "",
+                destination    = lineLabel,
+                milepost       = null,
+                subdivision    = v.routeId
+            )
         }
     }
 

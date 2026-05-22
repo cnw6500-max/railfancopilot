@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.railfancopilot.app.data.models.*
+import com.railfancopilot.app.ui.components.FilterChip
 import com.railfancopilot.app.ui.components.ProGateScreen
 import com.railfancopilot.app.ui.components.SectionHeader
 import com.railfancopilot.app.ui.theme.*
@@ -70,6 +72,9 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val isIdentifying by vm.isIdentifying.collectAsState()
     val locoIdResult by vm.locoIdResult.collectAsState()
     val locoIdError by vm.locoIdError.collectAsState()
+    val isAnalyzingConsist by vm.isAnalyzingConsist.collectAsState()
+    val consistResult by vm.consistResult.collectAsState()
+    val consistError by vm.consistError.collectAsState()
     val achievements by vm.achievements.collectAsState()
     val taggedPhotos by vm.taggedPhotos.collectAsState()
     val userLocation by vm.userLocation.collectAsState()
@@ -81,6 +86,17 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // ── Consist Analyzer state ────────────────────────────────────────────────
+    var showConsistPicker by remember { mutableStateOf(false) }
+
+    // ── Photo Enhancer state ──────────────────────────────────────────────────
+    var originalBitmap  by remember { mutableStateOf<Bitmap?>(null) }
+    var enhancedBitmap  by remember { mutableStateOf<Bitmap?>(null) }
+    var enhancedPath    by remember { mutableStateOf<String?>(null) }
+    var isEnhancing     by remember { mutableStateOf(false) }
+    var showEnhancer    by remember { mutableStateOf(false) }
+    var showOriginal    by remember { mutableStateOf(false) }   // before/after toggle
 
     // ── Loco Identifier state ─────────────────────────────────────────────────
     var showSourcePicker by remember { mutableStateOf(false) }
@@ -116,6 +132,52 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             val thumbPath = saveBitmapToFile(context, bitmap.scaleToMax(400), "loco_${System.currentTimeMillis()}")
             val base64 = bitmap.scaleToMax(800).toBase64Jpeg()
             withContext(Dispatchers.Main) { vm.identifyLocomotive(base64, thumbPath) }
+        }
+    }
+
+    // ── Consist Analyzer — camera launcher ───────────────────────────────────
+    val consistCameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        bitmap ?: return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.Default) {
+            val base64 = bitmap.scaleToMax(1200).toBase64Jpeg()
+            withContext(Dispatchers.Main) { vm.analyzeConsist(base64) }
+        }
+    }
+
+    // ── Consist Analyzer — gallery launcher ──────────────────────────────────
+    val consistGalleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return@launch
+            val base64 = bitmap.scaleToMax(1200).toBase64Jpeg()
+            withContext(Dispatchers.Main) { vm.analyzeConsist(base64) }
+        }
+    }
+
+    // ── Photo Enhancer — gallery launcher ─────────────────────────────────────
+    val enhancerGalleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            isEnhancing = true
+            val bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                ?: run { isEnhancing = false; return@launch }
+            val original = bmp.scaleToMax(1600)
+            val enhanced = original.applyRailfanEnhancement()
+            val path = saveBitmapToFile(context, enhanced, "enhanced_${System.currentTimeMillis()}")
+            withContext(Dispatchers.Main) {
+                originalBitmap = original
+                enhancedBitmap = enhanced
+                enhancedPath   = path
+                showOriginal   = false
+                isEnhancing    = false
+                showEnhancer   = true
+            }
         }
     }
 
@@ -191,6 +253,183 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     TextButton(onClick = { showSourcePicker = false }, modifier = Modifier.fillMaxWidth()) {
                         Text("Cancel", color = TextMuted)
                     }
+                }
+            },
+            dismissButton = {}
+        )
+    }
+
+    // ── Consist Analyzer source picker ───────────────────────────────────────
+    if (showConsistPicker) {
+        AlertDialog(
+            onDismissRequest = { showConsistPicker = false },
+            containerColor = BgCard,
+            title = { Text("Analyze Consist", color = TextPrimary, fontSize = 16.sp) },
+            text = { Text("Choose an image source", color = TextSecondary, fontSize = 14.sp) },
+            confirmButton = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { showConsistPicker = false; consistCameraLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = RailBlue)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Take Photo")
+                    }
+                    OutlinedButton(
+                        onClick = { showConsistPicker = false; consistGalleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                    ) {
+                        Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Choose from Gallery")
+                    }
+                    TextButton(onClick = { showConsistPicker = false }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cancel", color = TextMuted)
+                    }
+                }
+            },
+            dismissButton = {}
+        )
+    }
+
+    // ── Consist Analyzer loading ──────────────────────────────────────────────
+    if (isAnalyzingConsist) {
+        AlertDialog(
+            onDismissRequest = { vm.cancelConsistAnalysis() },
+            containerColor = BgCard,
+            title = { Text("Analyzing Consist…", color = TextPrimary, fontSize = 16.sp) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator(color = RailBlue, modifier = Modifier.size(28.dp))
+                    Text("Claude is reading every unit in the photo", color = TextSecondary, fontSize = 14.sp)
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { vm.cancelConsistAnalysis() }) { Text("Cancel", color = TextMuted) } }
+        )
+    }
+
+    // ── Consist Analyzer result ───────────────────────────────────────────────
+    val consistResultText = consistResult ?: consistError
+    if (consistResultText != null && !isAnalyzingConsist) {
+        AlertDialog(
+            onDismissRequest = { vm.clearConsistResult() },
+            containerColor = BgCard,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(
+                        if (consistError != null) Icons.Outlined.ErrorOutline else Icons.Default.Train,
+                        null,
+                        tint = if (consistError != null) RailRed else RailBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(if (consistError != null) "Error" else "Consist Analysis", color = TextPrimary, fontSize = 16.sp)
+                }
+            },
+            text = {
+                val scroll = rememberScrollState()
+                Column(modifier = Modifier.verticalScroll(scroll)) {
+                    Text(consistResultText, color = TextSecondary, fontSize = 13.sp, lineHeight = 20.sp)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { vm.clearConsistResult() }, colors = ButtonDefaults.buttonColors(containerColor = RailBlue)) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    // ── Photo Enhancer — enhancing spinner ────────────────────────────────────
+    if (isEnhancing) {
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = BgCard,
+            title = { Text("Enhancing Photo…", color = TextPrimary, fontSize = 16.sp) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator(color = RailBlue, modifier = Modifier.size(28.dp))
+                    Text("Applying railfan preset", color = TextSecondary, fontSize = 14.sp)
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
+    }
+
+    // ── Photo Enhancer — result dialog ────────────────────────────────────────
+    if (showEnhancer && enhancedBitmap != null && originalBitmap != null) {
+        AlertDialog(
+            onDismissRequest = { showEnhancer = false; originalBitmap = null; enhancedBitmap = null },
+            containerColor = BgCard,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.AutoFixHigh, null, tint = RailBlue, modifier = Modifier.size(20.dp))
+                    Text("Photo Enhanced", color = TextPrimary, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Before/After toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        FilterChip("Before", showOriginal) { showOriginal = true }
+                        Spacer(Modifier.width(8.dp))
+                        FilterChip("After", !showOriginal) { showOriginal = false }
+                    }
+                    val displayBitmap = if (showOriginal) originalBitmap else enhancedBitmap
+                    displayBitmap?.let { bmp ->
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = if (showOriginal) "Original photo" else "Enhanced photo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 300.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    Text(
+                        "Saturation +35% · Contrast +15% · Warm tones",
+                        color = TextMuted, fontSize = 10.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (enhancedPath != null) {
+                        OutlinedButton(
+                            onClick = {
+                                val file = File(enhancedPath!!)
+                                if (file.exists()) {
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        context, "${context.packageName}.fileprovider", file
+                                    )
+                                    context.startActivity(Intent.createChooser(
+                                        Intent(Intent.ACTION_SEND).apply {
+                                            type = "image/jpeg"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }, "Share enhanced photo"
+                                    ))
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = RailBlue)
+                        ) {
+                            Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Share")
+                        }
+                    }
+                    Button(
+                        onClick = { showEnhancer = false; originalBitmap = null; enhancedBitmap = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = RailBlue)
+                    ) { Text("Done") }
                 }
             },
             dismissButton = {}
@@ -418,6 +657,24 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     onClick = { showSourcePicker = true },
                     highlight = true
                 )
+                Spacer(Modifier.height(10.dp))
+                PhotoToolCard(
+                    icon = Icons.Default.Train,
+                    title = "Consist Analyzer",
+                    desc = "ID every unit front-to-back with Claude AI",
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { showConsistPicker = true },
+                    highlight = true
+                )
+                Spacer(Modifier.height(10.dp))
+                PhotoToolCard(
+                    icon = Icons.Default.AutoFixHigh,
+                    title = "Photo Enhancer",
+                    desc = "Railfan preset: saturation, contrast, warmth",
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { enhancerGalleryLauncher.launch("image/*") },
+                    highlight = false
+                )
             }
         }
 
@@ -459,6 +716,43 @@ private fun Bitmap.toBase64Jpeg(quality: Int = 80): String {
     val out = ByteArrayOutputStream()
     compress(Bitmap.CompressFormat.JPEG, quality, out)
     return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+}
+
+/** Applies the Railfan Enhancement preset: saturation +35%, contrast +15%, slight brightness lift and warmth. */
+internal fun Bitmap.applyRailfanEnhancement(): Bitmap {
+    val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(result)
+    val paint  = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+    val cm = android.graphics.ColorMatrix()
+
+    // 1. Saturation boost — makes railroad paint schemes pop
+    val satMatrix = android.graphics.ColorMatrix()
+    satMatrix.setSaturation(1.35f)
+    cm.postConcat(satMatrix)
+
+    // 2. Contrast + brightness lift
+    val contrast  = 1.15f
+    val brightness = 10f
+    val translate  = (-0.5f * contrast + 0.5f) * 255f + brightness
+    cm.postConcat(android.graphics.ColorMatrix(floatArrayOf(
+        contrast, 0f, 0f, 0f, translate,
+        0f, contrast, 0f, 0f, translate,
+        0f, 0f, contrast, 0f, translate,
+        0f, 0f, 0f, 1f, 0f
+    )))
+
+    // 3. Slight warmth — flatters locomotive paint and golden-hour sky
+    cm.postConcat(android.graphics.ColorMatrix(floatArrayOf(
+        1f, 0f, 0f, 0f,  8f,
+        0f, 1f, 0f, 0f,  0f,
+        0f, 0f, 1f, 0f, -6f,
+        0f, 0f, 0f, 1f,  0f
+    )))
+
+    paint.colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+    canvas.drawBitmap(this, 0f, 0f, paint)
+    return result
 }
 
 /** Write [bitmap] as a JPEG into the app's private photos directory. Returns the absolute path, or null on error. */
