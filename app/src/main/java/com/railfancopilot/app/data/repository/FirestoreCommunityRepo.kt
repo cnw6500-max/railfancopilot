@@ -1,10 +1,12 @@
 package com.railfancopilot.app.data.repository
 
 import android.location.Location
+import android.net.Uri
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.storage.FirebaseStorage
 import com.railfancopilot.app.data.models.CommunityReport
 import com.railfancopilot.app.data.models.SightingComment
 import com.railfancopilot.app.data.models.WatchlistEntry
@@ -13,6 +15,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import java.io.File
 import java.util.UUID
 
 /**
@@ -89,6 +92,7 @@ object FirestoreCommunityRepo {
                                 }
                             }
 
+                            val photoUrl = doc.getString("photoUrl")
                             results += CommunityReport(
                                 id              = doc.id,
                                 userId          = reporter,
@@ -102,7 +106,7 @@ object FirestoreCommunityRepo {
                                 timestampMs     = tsMs,
                                 upvotes         = upvotes,
                                 isVerified      = false,
-                                localPhotoPath  = null
+                                localPhotoPath  = photoUrl
                             )
                         }
                     } catch (e: Exception) {
@@ -152,7 +156,7 @@ object FirestoreCommunityRepo {
                             latitude = lat, longitude = lon, text = text,
                             trainSymbol = trainSymbol.ifBlank { null }, railroad = railroad,
                             tags = "[]", timestampMs = tsMs, upvotes = upvotes,
-                            isVerified = false, localPhotoPath = null
+                            isVerified = false, localPhotoPath = doc.getString("photoUrl")
                         )
                     } catch (_: Exception) { null }
                 } ?: emptyList()
@@ -163,7 +167,7 @@ object FirestoreCommunityRepo {
 
     // ── Submit a new sighting ─────────────────────────────────────────────────
 
-    fun submitSighting(
+    suspend fun submitSighting(
         lat: Double,
         lon: Double,
         text: String,
@@ -172,9 +176,26 @@ object FirestoreCommunityRepo {
         reporterName: String,
         location: String = "Unknown location",
         consist: String? = null,
-        weather: String? = null
+        weather: String? = null,
+        photoPath: String? = null
     ) {
-        val doc = hashMapOf(
+        val photoUrl: String? = photoPath?.let { path ->
+            try {
+                val file = File(path)
+                if (file.exists()) {
+                    val ref = FirebaseStorage.getInstance().reference
+                        .child("sightings/${UUID.randomUUID()}/photo.jpg")
+                    ref.putFile(Uri.fromFile(file)).await()
+                    ref.downloadUrl.await().toString()
+                } else null
+            } catch (e: Exception) {
+                if (com.railfancopilot.app.BuildConfig.DEBUG)
+                    android.util.Log.e("FirestoreRepo", "Photo upload failed: ${e.message}", e)
+                null
+            }
+        }
+
+        val doc = hashMapOf<String, Any?>(
             "railroad"     to (railroad ?: "Unknown"),
             "trainSymbol"  to (trainSymbol ?: "Unknown"),
             "location"     to location,
@@ -185,13 +206,15 @@ object FirestoreCommunityRepo {
             "timestampMs"  to System.currentTimeMillis().toDouble(),
             "upvotes"      to 0L,
             "consist"      to (consist ?: ""),
-            "weather"      to (weather ?: "")
+            "weather"      to (weather ?: ""),
+            "photoUrl"     to photoUrl
         )
-        db.collection(COLLECTION).add(doc)
-            .addOnFailureListener { e ->
-                if (com.railfancopilot.app.BuildConfig.DEBUG)
-                    android.util.Log.e("FirestoreRepo", "submitSighting failed: ${e.message}", e)
-            }
+        try {
+            db.collection(COLLECTION).add(doc).await()
+        } catch (e: Exception) {
+            if (com.railfancopilot.app.BuildConfig.DEBUG)
+                android.util.Log.e("FirestoreRepo", "submitSighting failed: ${e.message}", e)
+        }
     }
 
     // ── Upvote a sighting ─────────────────────────────────────────────────────

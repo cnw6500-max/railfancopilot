@@ -15,6 +15,7 @@ struct FirestoreSighting: Identifiable, Codable {
     var reporterName: String
     var timestampMs: Double
     var upvotes: Int
+    var photoUrl: String?
 
     var minutesAgo: Int {
         let ms = Date().timeIntervalSince1970 * 1000 - timestampMs

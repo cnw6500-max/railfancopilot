@@ -270,8 +270,10 @@ fun ReportCard(
         }
     }
 
-    // Load photo thumbnail asynchronously
+    // localPhotoPath is now either a local file path (just submitted) or a Firebase Storage https:// URL
+    val isRemotePhoto = report.localPhotoPath?.startsWith("https://") == true
     val thumbnail by produceState<Bitmap?>(initialValue = null, key1 = report.localPhotoPath) {
+        if (isRemotePhoto) return@produceState
         value = report.localPhotoPath?.let { path ->
             withContext(Dispatchers.IO) {
                 try {
@@ -341,11 +343,11 @@ fun ReportCard(
             }
         }
 
-        // Photo thumbnail
-        thumbnail?.let { bmp ->
+        // Photo thumbnail — remote URL (Coil) or local bitmap
+        if (isRemotePhoto) {
             Spacer(Modifier.height(8.dp))
-            Image(
-                bitmap = bmp.asImageBitmap(),
+            coil.compose.AsyncImage(
+                model = report.localPhotoPath,
                 contentDescription = "Report photo",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -353,6 +355,19 @@ fun ReportCard(
                     .height(160.dp)
                     .clip(RoundedCornerShape(8.dp))
             )
+        } else {
+            thumbnail?.let { bmp ->
+                Spacer(Modifier.height(8.dp))
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "Report photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+            }
         }
 
         // Comment toggle + share/delete row

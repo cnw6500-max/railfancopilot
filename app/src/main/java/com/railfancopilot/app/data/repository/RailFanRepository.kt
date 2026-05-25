@@ -319,7 +319,8 @@ class RailFanRepository(private val context: Context) {
             reporterName = reporterName,
             location = location,
             consist = consist,
-            weather = weather
+            weather = weather,
+            photoPath = localPhotoPath
         )
     }
 

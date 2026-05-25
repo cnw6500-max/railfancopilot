@@ -106,9 +106,11 @@ struct CommunityView: View {
                 }
             }
             .onAppear {
-                let lat = vm.userLocation?.latitude ?? 41.8781
-                let lon = vm.userLocation?.longitude ?? -87.6298
-                firestore.startListening(lat: lat, lon: lon, radiusMiles: distanceFilter)
+                // If location isn't available yet use a wide radius so no sightings are filtered out
+                let lat = vm.userLocation?.latitude ?? 0.0
+                let lon = vm.userLocation?.longitude ?? 0.0
+                let radius = vm.userLocation != nil ? distanceFilter : 25000.0
+                firestore.startListening(lat: lat, lon: lon, radiusMiles: radius)
             }
             .onDisappear {
                 firestore.stopListening()
@@ -165,6 +167,22 @@ struct FirestoreSightingCard: View {
                     .font(.system(size: 13))
                     .foregroundColor(.textSecondary)
                     .lineLimit(2)
+            }
+
+            if let photoUrl = sighting.photoUrl, let url = URL(string: photoUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                            .frame(maxWidth: .infinity).frame(height: 160)
+                            .clipped().cornerRadius(8)
+                    case .failure:
+                        EmptyView()
+                    default:
+                        Color.bgCard.frame(height: 160).cornerRadius(8)
+                            .overlay(ProgressView())
+                    }
+                }
             }
 
             HStack {
