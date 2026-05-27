@@ -294,8 +294,18 @@ enum class RailAlertType(val label: String, val emoji: String) {
     HOT_TRAIN("Hot Train", "🔥"),
     HIGH_SPEED("High Speed", "⚡"),
     SCANNER_ACTIVITY("Scanner Activity", "📻"),
-    TRAIN_APPROACHING("Train Approaching", "🚂")
+    TRAIN_APPROACHING("Train Approaching", "🚂"),
+    HERITAGE_UNIT("Heritage Unit", "🏆"),
+    SPECIAL_MOVE("Special Movement", "🌟")
 }
+
+// ── Railway map lines (from Overpass API) ────────────────────────────────────
+data class RailwaySegment(
+    val id: Long,
+    val points: List<com.google.android.gms.maps.model.LatLng>,
+    val operator: String,   // e.g. "BNSF Railway"
+    val name: String        // subdivision name from OSM tags
+)
 
 data class RailAlert(
     val id: String,
@@ -306,6 +316,10 @@ data class RailAlert(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val trainSymbol: String? = null,
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+    val isVerified: Boolean = false,   // reporter score >= threshold at time of alert
+    val reporterScore: Int = 0,
+    val locoNumber: String? = null,    // specific road number, e.g. "4014"
+    val heritageName: String? = null   // scheme name, e.g. "UP Big Boy"
 )
 

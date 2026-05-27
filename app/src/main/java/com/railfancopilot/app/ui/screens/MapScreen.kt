@@ -45,7 +45,24 @@ import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.GeoSearchResult
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+
+private fun railroadLineColor(operator: String): androidx.compose.ui.graphics.Color {
+    val op = operator.uppercase()
+    return when {
+        "BNSF" in op                              -> androidx.compose.ui.graphics.Color(0xFFFF6200)
+        "UNION PACIFIC" in op || op.startsWith("UP ") || op == "UP"
+                                                  -> androidx.compose.ui.graphics.Color(0xFFFFB300)
+        "CSX" in op                               -> androidx.compose.ui.graphics.Color(0xFF1565C0)
+        "NORFOLK SOUTHERN" in op || "NS " in op   -> androidx.compose.ui.graphics.Color(0xFF757575)
+        "CANADIAN NATIONAL" in op || "CN " in op  -> androidx.compose.ui.graphics.Color(0xFFD32F2F)
+        "CANADIAN PACIFIC" in op || "CP " in op   -> androidx.compose.ui.graphics.Color(0xFF880E4F)
+        "AMTRAK" in op                            -> androidx.compose.ui.graphics.Color(0xFF1A237E)
+        "KANSAS CITY SOUTHERN" in op || "KCS" in op -> androidx.compose.ui.graphics.Color(0xFF558B2F)
+        else                                      -> androidx.compose.ui.graphics.Color(0xFF546E7A)
+    }
+}
 
 @Composable
 fun MapScreen(vm: RailFanViewModel) {
@@ -60,6 +77,7 @@ fun MapScreen(vm: RailFanViewModel) {
     val railOverlayDefault by vm.railOverlayDefault.collectAsState()
     val lastRefreshMs by vm.lastRefreshMs.collectAsState()
     val trainFetchError by vm.trainFetchError.collectAsState()
+    val railwaySegments by vm.railwaySegments.collectAsState()
 
     // Tick every 30 s so the stale-data banner age label stays fresh
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -72,6 +90,8 @@ fun MapScreen(vm: RailFanViewModel) {
     val selectedTrain by remember { derivedStateOf { trains.find { it.id == selectedTrainId } } }
     var showSatellite by remember { mutableStateOf(false) }
     var showRailwayMap by remember { mutableStateOf(railOverlayDefault) }
+    var showRailLines by remember { mutableStateOf(false) }
+    var tappedSegmentName by remember { mutableStateOf<String?>(null) }
     var hasAnimatedToUser by remember { mutableStateOf(false) }
 
     var searchQuery by remember { mutableStateOf("") }
@@ -111,6 +131,27 @@ fun MapScreen(vm: RailFanViewModel) {
         }
     }
 
+    // Fetch Overpass rail lines when camera is idle at zoom ≥ 9.
+    // snapshotFlow retries whenever isMoving or projection changes, so the
+    // first toggle works even if projection was null during map init.
+    LaunchedEffect(showRailLines) {
+        if (!showRailLines) return@LaunchedEffect
+        snapshotFlow {
+            cameraPositionState.isMoving to
+                cameraPositionState.projection?.visibleRegion?.latLngBounds
+        }
+            .filter { !it.first && it.second != null && cameraPositionState.position.zoom >= 9f }
+            .collect {
+                val bounds = it.second ?: return@collect
+                vm.fetchRailwaySegments(
+                    south = bounds.southwest.latitude,
+                    west  = bounds.southwest.longitude,
+                    north = bounds.northeast.latitude,
+                    east  = bounds.northeast.longitude
+                )
+            }
+    }
+
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val screenHeight = configuration.screenHeightDp.dp
@@ -132,7 +173,7 @@ fun MapScreen(vm: RailFanViewModel) {
                 ),
                 uiSettings = MapUiSettings(zoomControlsEnabled = false),
                 onMapClick = {
-                    // Tapping the map closes the search dropdown
+                    tappedSegmentName = null
                     if (searchFocused) {
                         focusManager.clearFocus()
                         vm.clearSearch()
@@ -141,6 +182,21 @@ fun MapScreen(vm: RailFanViewModel) {
             ) {
                 if (showRailwayMap) {
                     TileOverlay(tileProvider = railwayTileProvider, transparency = 0.0f)
+                }
+
+                // Bold Overpass rail lines — drawn under train markers
+                if (showRailLines) {
+                    railwaySegments.forEach { segment ->
+                        Polyline(
+                            points = segment.points,
+                            color = railroadLineColor(segment.operator),
+                            width = 8f,
+                            clickable = true,
+                            onClick = {
+                                tappedSegmentName = segment.name.ifBlank { segment.operator }.ifBlank { "Railway" }
+                            }
+                        )
+                    }
                 }
 
                 // Draw trail polylines behind markers
@@ -186,6 +242,32 @@ fun MapScreen(vm: RailFanViewModel) {
                         icon = com.google.android.gms.maps.model.BitmapDescriptorFactory
                             .defaultMarker(com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_AZURE)
                     )
+                }
+            }
+
+            // ── Tapped segment name chip ───────────────────────────────────────
+            tappedSegmentName?.let { name ->
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 10.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(BgCard.copy(alpha = 0.95f))
+                        .border(0.5.dp, BorderLight, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.DirectionsRailway, null,
+                        tint = RailBlue, modifier = Modifier.size(14.dp))
+                    Text(name, color = TextPrimary, fontSize = 13.sp)
+                    IconButton(
+                        onClick = { tappedSegmentName = null },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(Icons.Default.Close, null,
+                            tint = TextMuted, modifier = Modifier.size(12.dp))
+                    }
                 }
             }
 
@@ -303,6 +385,7 @@ fun MapScreen(vm: RailFanViewModel) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip("Satellite", showSatellite) { showSatellite = !showSatellite }
                     FilterChip("Rail Map", showRailwayMap) { showRailwayMap = !showRailwayMap }
+                    FilterChip("Rail Lines", showRailLines) { showRailLines = !showRailLines }
                 }
             }
         }
@@ -525,8 +608,8 @@ fun TrainDetailSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -
             defaultLat = loc?.latitude,
             defaultLon = loc?.longitude,
             onDismiss = { showSaveDialog = false },
-            onSave = { name, notes, lat, lon ->
-                vm.saveLocation(lat, lon, name, notes)
+            onSave = { name, notes, subdivision, scannerFreq, photoTips, lat, lon ->
+                vm.saveLocation(lat, lon, name, notes, subdivision, scannerFreq, photoTips)
                 showSaveDialog = false
                 savedConfirmed = true
             }

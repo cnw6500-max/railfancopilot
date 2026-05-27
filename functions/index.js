@@ -204,6 +204,153 @@ exports.getCaltrainPositions = functions.https.onCall(async () => {
     );
 });
 
+// ── Heritage unit reference data (mirrors HeritageData.kt) ───────────────────
+// Key: "RAILROAD_ROADNUMBER" (uppercase).  Value: scheme display name.
+const HERITAGE_MAP = {
+    'UP_844':   'UP Northern Steam',      'UP_3985':  'UP Challenger Steam',
+    'UP_4014':  'UP Big Boy',             'UP_4141':  'Bush 41 Presidential',
+    'UP_1983':  'Reagan Presidential',    'UP_1969':  'Nixon Presidential',
+    'UP_1976':  'Spirit of the Union Pacific',
+    'BNSF_100': 'ATSF Warbonnet',         'BNSF_700': 'GN Empire Builder',
+    'BNSF_1521':'NP Monad',               'BNSF_2194':'CB&Q Chinese Red',
+    'BNSF_2650':'FW&D Mineral Red',       'BNSF_3140':'SF&SF Mustard Yellow',
+    'BNSF_4059':'BN Cascade Green',
+    'NS_8025':  'NS Pennsylvania RR',     'NS_8026':  'NS Norfolk & Western',
+    'NS_8027':  'NS Southern Railway',    'NS_8028':  'NS New York Central',
+    'NS_8029':  'NS Virginian Railway',   'NS_8030':  'NS Erie Lackawanna',
+    'NS_8031':  'NS Reading Company',     'NS_8032':  'NS Western Maryland',
+    'NS_8033':  'NS Lehigh Valley',       'NS_8034':  'NS Central of Georgia',
+    'NS_8035':  'NS Monon Railroad',      'NS_8036':  'NS Wabash Railroad',
+    'NS_8037':  'NS Southern Railway — Original', 'NS_8038': 'NS Nickel Plate Road',
+    'NS_8039':  'NS N&W Original',        'NS_8040':  'NS Conrail',
+    'NS_8100':  'NS 21C Spirit',
+    'CSX_911':  'CSX Spirit of Louisville','CSX_1776': 'CSX Spirit of America',
+    'CPKC_4062':'CP Beaver Logo Heritage','CPKC_7021':'KCS Southern Belle Heritage',
+    'CPKC_7022':'MKT Katy Heritage',
+};
+
+// Returns the first matching HeritageUnit or null.
+// Checks "RAILROAD_NUMBER" and then any railroad prefix for well-known steam numbers.
+function matchHeritage(railroad, roadNumbers) {
+    const rr = (railroad || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (const rn of roadNumbers) {
+        const n = rn.toUpperCase().trim();
+        const withRr  = `${rr}_${n}`;
+        const withUp  = `UP_${n}`;
+        // Check exact railroad match first, then try all keys ending in _NUMBER
+        if (HERITAGE_MAP[withRr]) return { roadNumber: rn, schemeName: HERITAGE_MAP[withRr] };
+        // Common steam units known by number alone regardless of reporting railroad
+        if (HERITAGE_MAP[withUp] && ['844','3985','4014'].includes(n))
+            return { roadNumber: rn, schemeName: HERITAGE_MAP[withUp] };
+    }
+    return null;
+}
+
+// ── heritageUnitAlert ─────────────────────────────────────────────────────────
+// Fires on every new sighting. If the consist contains a known heritage road
+// number, writes an alert to rail_alerts and (if reporter is trusted) pushes FCM.
+
+exports.heritageUnitAlert = functions.firestore
+    .document('sightings/{sightingId}')
+    .onCreate(async (snap) => {
+        const data    = snap.data();
+        const db      = admin.firestore();
+        const messaging = admin.messaging();
+
+        // ── 1. Resolve reporter score ─────────────────────────────────────────
+        const reporterUid = data.reporterUid || null;
+        let reporterScore = 0;
+        if (reporterUid) {
+            const userDoc = await db.collection('users').doc(reporterUid).get();
+            reporterScore = userDoc.exists ? (userDoc.data().reporterScore || 0) : 0;
+        }
+
+        // ── 2. Extract road numbers from consist JSON or free-text notes ──────
+        const roadNumbers = [];
+        try {
+            const consist = JSON.parse(data.consist || '[]');
+            if (Array.isArray(consist)) {
+                consist.forEach(e => { if (e.roadNumber) roadNumbers.push(e.roadNumber); });
+            }
+        } catch (_) {}
+        // Also scan notes for standalone 3-5 digit numbers
+        const notesMatches = (data.notes || '').match(/\b\d{3,5}\b/g) || [];
+        roadNumbers.push(...notesMatches);
+
+        if (roadNumbers.length === 0) return null;
+
+        // ── 3. Heritage match ─────────────────────────────────────────────────
+        const matched = matchHeritage(data.railroad || '', roadNumbers);
+        if (!matched) return null;
+
+        const isVerified = reporterScore >= 3;
+        const location   = data.location || 'Unknown location';
+        const reporter   = data.reporterName || 'A railfan';
+
+        // ── 4. Write to rail_alerts ───────────────────────────────────────────
+        await db.collection('rail_alerts').add({
+            type:         'HERITAGE_UNIT',
+            title:        `Heritage Unit: ${matched.schemeName}`,
+            message:      `#${matched.roadNumber} reported by ${reporter} near ${location}`,
+            timestampMs:  Date.now(),
+            latitude:     data.latitude  || null,
+            longitude:    data.longitude || null,
+            trainSymbol:  data.trainSymbol || null,
+            locoNumber:   matched.roadNumber,
+            heritageName: matched.schemeName,
+            isVerified,
+            reporterScore,
+            sightingId:   snap.id,
+        });
+
+        // ── 5. Push to opted-in devices only if reporter is trusted ───────────
+        if (!isVerified) return null;
+
+        const usersSnap = await db.collection('users')
+            .where('fcmToken', '!=', '')
+            .limit(500)
+            .get();
+
+        const tokens = usersSnap.docs.map(d => d.data().fcmToken).filter(Boolean);
+        if (tokens.length === 0) return null;
+
+        await Promise.all(tokens.map(token =>
+            messaging.send({
+                token,
+                notification: {
+                    title: `🏆 Heritage Spotted: ${matched.schemeName}`,
+                    body:  `#${matched.roadNumber} near ${location}`,
+                },
+                android: { priority: 'high', notification: { channelId: 'heritage_alerts' } },
+                apns:    { payload: { aps: { sound: 'default' } } },
+            }).catch(() => null)
+        ));
+
+        return null;
+    });
+
+// ── onSightingUpvoted ─────────────────────────────────────────────────────────
+// Called by the Android app when a user upvotes a sighting.
+// Increments the original reporter's score in users/{uid}.
+
+exports.onSightingUpvoted = functions.https.onCall(async (data) => {
+    const { sightingId } = data;
+    if (!sightingId) throw new functions.https.HttpsError('invalid-argument', 'sightingId required');
+
+    const db = admin.firestore();
+    const sightingDoc = await db.collection('sightings').doc(sightingId).get();
+    if (!sightingDoc.exists) return { ok: false };
+
+    const reporterUid = sightingDoc.data().reporterUid;
+    if (!reporterUid) return { ok: false };
+
+    await db.collection('users').doc(reporterUid).set(
+        { reporterScore: admin.firestore.FieldValue.increment(1) },
+        { merge: true }
+    );
+    return { ok: true };
+});
+
 // ── watchlistSightingAlert ────────────────────────────────────────────────────
 // Fires when any new sighting is written to the "sightings" collection.
 // Scans all users' watchlist subcollections for matching symbols or road numbers,

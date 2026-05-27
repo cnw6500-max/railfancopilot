@@ -49,6 +49,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Encyclopedia    : Screen("encyclopedia",    "Roster",    Icons.Default.Book)
     object SavedLocations  : Screen("saved_locations", "Saved",     Icons.Default.Bookmark)
     object Spots           : Screen("spots",           "Spots",     Icons.Default.Place)
+    object Webcams         : Screen("webcams",         "Webcams",   Icons.Default.Videocam)
     object Settings        : Screen("settings",        "Settings",  Icons.Default.Settings)
     object Upgrade         : Screen("upgrade",         "Upgrade",   Icons.Default.Star)
     object More            : Screen("more",            "More",      Icons.Default.GridView)
@@ -205,6 +206,7 @@ fun RailFanApp() {
                 composable(Screen.Encyclopedia.route)    { EncyclopediaScreen(vm) }
                 composable(Screen.SavedLocations.route) { SavedLocationsScreen(vm, onUpgrade) }
                 composable(Screen.Spots.route)          { SpotsScreen(vm, onUpgrade) }
+                composable(Screen.Webcams.route)        { WebcamsScreen() }
                 composable(Screen.Settings.route)       { SettingsScreen(vm, onUpgrade) }
                 composable(Screen.Upgrade.route)        {
                     UpgradeScreen(vm, onBack = { navController.popBackStack() })

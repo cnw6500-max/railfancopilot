@@ -51,7 +51,10 @@ private val PREF_MTA_METRO_NORTH_ENABLED   = booleanPreferencesKey("mta_metro_no
 private val PREF_CALTRAIN_ENABLED          = booleanPreferencesKey("caltrain_enabled")          // default false
 private val PREF_SOUND_TRANSIT_ENABLED     = booleanPreferencesKey("sound_transit_enabled")     // default false
 private val PREF_USER_NAME                 = stringPreferencesKey("user_name")                    // default "Railfan"
-private val PREF_DECODE_COUNT              = intPreferencesKey("decode_count")                    // cumulative successful decodes
+private val PREF_DECODE_COUNT              = intPreferencesKey("decode_count")
+private val PREF_LOCO_COUNT               = intPreferencesKey("loco_id_count")
+private val PREF_PHOTO_COUNT              = intPreferencesKey("photo_tag_count")
+private val PREF_DECODED_RAILROADS        = stringSetPreferencesKey("decoded_railroads")
 private val PREF_ALERT_RARE_LOCO   = booleanPreferencesKey("alert_rare_loco")
 private val PREF_ALERT_HOT_TRAIN   = booleanPreferencesKey("alert_hot_train")
 private val PREF_ALERT_HIGH_SPEED  = booleanPreferencesKey("alert_high_speed")
@@ -65,12 +68,23 @@ private fun tsKey(id: String) = longPreferencesKey("ts_$id")
 data class GeoSearchResult(val displayName: String, val lat: Double, val lon: Double)
 
 private val BASE_ACHIEVEMENTS = listOf(
-    Achievement("a1", "Heritage Spotter", "Photograph a heritage unit", "⭐", false, null),
-    Achievement("a2", "Night Owl", "Capture a night shot after dark", "🌙", false, null),
-    Achievement("a3", "Grain Rush", "Spot a train during grain rush season", "🌾", false, null),
-    Achievement("a4", "Double Stack", "Photograph a double-stack intermodal", "📦", false, null),
-    Achievement("a5", "Speed Demon", "See a train exceed 79 mph", "⚡", false, null),
-    Achievement("a6", "Yard Master", "Visit 5 classification yards", "🚂", false, null)
+    Achievement("a1",  "Heritage Spotter",   "Photograph a heritage unit",                    "⭐", false, null),
+    Achievement("a2",  "Night Owl",          "Capture a night shot after dark",               "🌙", false, null),
+    Achievement("a3",  "Grain Rush",         "Spot a train during grain rush season",         "🌾", false, null),
+    Achievement("a4",  "Double Stack",       "Photograph a double-stack intermodal",          "📦", false, null),
+    Achievement("a5",  "Speed Demon",        "See a train exceed 79 mph",                     "⚡", false, null),
+    Achievement("a6",  "Yard Master",        "Visit 5 classification yards",                  "🚂", false, null),
+    Achievement("a7",  "Amtrak Spotter",     "See an Amtrak train on the live map",           "🚄", false, null),
+    Achievement("a8",  "Commuter Pass",      "See a commuter rail train on the live map",     "🚃", false, null),
+    Achievement("a9",  "Decoder Novice",     "Decode 5 train symbols",                        "🔤", false, null),
+    Achievement("a10", "Decoder Expert",     "Decode 25 train symbols",                       "📖", false, null),
+    Achievement("a11", "Century Club",       "See a train exceed 100 mph",                    "💨", false, null),
+    Achievement("a12", "Foreign Power",      "AI spots a foreign or rare visitor locomotive", "🌎", false, null),
+    Achievement("a13", "First ID",           "Identify your first locomotive via AI",         "🔍", false, null),
+    Achievement("a14", "Loco Expert",        "AI-identify 10 locomotives",                    "🏆", false, null),
+    Achievement("a15", "Snapshot",           "Tag your first railfan photo",                  "📷", false, null),
+    Achievement("a16", "Photo Journalist",   "Tag 10 railfan photos",                         "🎞", false, null),
+    Achievement("a17", "Network Spotter",    "Decode symbols from 3 different railroads",     "🗺", false, null)
 )
 
 class RailFanViewModel(application: Application) : AndroidViewModel(application) {
@@ -512,6 +526,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                         val newCount = (prefs[PREF_DECODE_COUNT] ?: 0) + 1
                         prefs[PREF_DECODE_COUNT] = newCount
                         if (newCount == 5 || newCount == 25) _requestInAppReview.value = true
+                        if (newCount == 5)  unlockAchievement("a9")
+                        if (newCount == 25) unlockAchievement("a10")
+                        val seenRailroads = (prefs[PREF_DECODED_RAILROADS] ?: emptySet()) + decoded.railroad.name
+                        prefs[PREF_DECODED_RAILROADS] = seenRailroads
+                        if (seenRailroads.size >= 3) unlockAchievement("a17")
                     }
                 }.onFailure {
                     _decodeError.value = "Could not decode symbol. Check your API key or try again."
@@ -578,7 +597,15 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun saveTaggedPhoto(metadata: PhotoMetadata) {
-        viewModelScope.launch { repo.saveTaggedPhoto(metadata) }
+        viewModelScope.launch {
+            repo.saveTaggedPhoto(metadata)
+            settingsStore.edit { prefs ->
+                val newCount = (prefs[PREF_PHOTO_COUNT] ?: 0) + 1
+                prefs[PREF_PHOTO_COUNT] = newCount
+                if (newCount == 1)  unlockAchievement("a15")
+                if (newCount == 10) unlockAchievement("a16")
+            }
+        }
     }
 
     fun deleteTaggedPhoto(metadata: PhotoMetadata) {
@@ -618,7 +645,6 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                 result.onSuccess { text ->
                     _locoIdResult.value = text
                     checkLocoIdAchievements(text)
-                    // Persist to history
                     repo.saveLocoIdEntry(
                         LocoIdEntry(
                             id = UUID.randomUUID().toString(),
@@ -627,6 +653,12 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                             timestampMs = System.currentTimeMillis()
                         )
                     )
+                    settingsStore.edit { prefs ->
+                        val newCount = (prefs[PREF_LOCO_COUNT] ?: 0) + 1
+                        prefs[PREF_LOCO_COUNT] = newCount
+                        if (newCount == 1)  unlockAchievement("a13")
+                        if (newCount == 10) unlockAchievement("a14")
+                    }
                 }.onFailure {
                     _locoIdError.value = "Identification failed. Check your connection and try again."
                 }
@@ -798,11 +830,19 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _alertApproaching = MutableStateFlow(true)
     val alertApproaching: StateFlow<Boolean> = _alertApproaching.asStateFlow()
 
+    private val _alertHeritage   = MutableStateFlow(true)
+    val alertHeritage: StateFlow<Boolean>   = _alertHeritage.asStateFlow()
+
     fun setAlertRareLoco(on: Boolean)   { _alertRareLoco.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_RARE_LOCO]   = on } } }
     fun setAlertHotTrain(on: Boolean)   { _alertHotTrain.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HOT_TRAIN]   = on } } }
     fun setAlertHighSpeed(on: Boolean)  { _alertHighSpeed.value = on;  viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HIGH_SPEED]  = on } } }
     fun setAlertScanner(on: Boolean)    { _alertScanner.value = on;    viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_SCANNER]     = on } } }
     fun setAlertApproaching(on: Boolean){ _alertApproaching.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_APPROACHING] = on } } }
+    fun setAlertHeritage(on: Boolean)   { _alertHeritage.value = on }
+
+    // Tracks which Firestore alert IDs have already been merged so we don't
+    // re-fire the in-app banner on every snapshot refresh.
+    private val seenFirestoreAlertIds = mutableSetOf<String>()
 
     fun markAlertRead(id: String) {
         _railAlerts.value = _railAlerts.value.map { if (it.id == id) it.copy(isRead = true) else it }
@@ -815,6 +855,36 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val RAILFAN_ALERTS_CHANNEL = "railfan_alerts"
     private val seenReportIds = mutableSetOf<String>()
     private var alertsSeeded  = false
+
+    /** Start listening to Firestore rail_alerts — call once after auth is ready. */
+    fun startFirestoreAlertsListener() {
+        viewModelScope.launch {
+            com.railfancopilot.app.data.repository.FirestoreCommunityRepo
+                .getAlertsFlow()
+                .collect { firestoreAlerts ->
+                    val filtered = firestoreAlerts.filter { a ->
+                        when (a.type) {
+                            RailAlertType.HERITAGE_UNIT, RailAlertType.SPECIAL_MOVE -> _alertHeritage.value
+                            RailAlertType.RARE_LOCO    -> _alertRareLoco.value
+                            RailAlertType.HOT_TRAIN    -> _alertHotTrain.value
+                            else -> true
+                        }
+                    }
+                    // Merge with locally-generated alerts, deduplicate by id
+                    val localAlerts = _railAlerts.value.filter { it.id !in filtered.map { a -> a.id }.toSet() }
+                    val merged = (filtered + localAlerts)
+                        .sortedByDescending { it.timestampMs }
+                        .take(50)
+                    _railAlerts.value = merged
+
+                    // Fire in-app banner only for genuinely new Firestore alerts
+                    filtered.filter { it.id !in seenFirestoreAlertIds }.forEach { alert ->
+                        seenFirestoreAlertIds.add(alert.id)
+                        _newRailAlert.value = alert
+                    }
+                }
+        }
+    }
 
     private fun fireRailAlert(alert: RailAlert) {
         _railAlerts.value = (listOf(alert) + _railAlerts.value).take(50)
@@ -1002,13 +1072,14 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         repo.getSavedLocationsFlow()
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun saveLocation(lat: Double, lon: Double, name: String, notes: String?) {
+    fun saveLocation(lat: Double, lon: Double, name: String, notes: String?,
+                     subdivision: String? = null, scannerFrequency: String? = null, photoTips: String? = null) {
         viewModelScope.launch {
             repo.saveLocation(SavedLocation(
                 id = UUID.randomUUID().toString(),
                 name = name, latitude = lat, longitude = lon,
-                notes = notes, subdivision = null,
-                scannerFrequency = null, photoTips = null,
+                notes = notes, subdivision = subdivision,
+                scannerFrequency = scannerFrequency, photoTips = photoTips,
                 createdMs = System.currentTimeMillis()
             ))
         }
@@ -1066,7 +1137,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         if (hour >= 21 || hour < 5) unlockAchievement("a2")
 
-        // Heritage Spotter: Claude mentions heritage keywords
+        // Heritage Spotter: Claude mentions heritage paint keywords
         val heritageKeywords = listOf("heritage", "retro", "patched", "spirit of", "fallen flag",
             "commemorative", "historic", "paint scheme", "special livery")
         if (heritageKeywords.any { lower.contains(it) }) unlockAchievement("a1")
@@ -1074,6 +1145,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         // Double Stack: Claude mentions intermodal / container keywords
         val dsKeywords = listOf("double stack", "intermodal", "container", "cofc", "stack train", "well car")
         if (dsKeywords.any { lower.contains(it) }) unlockAchievement("a4")
+
+        // Foreign Power: Claude identifies a foreign-railroad or rare visitor unit
+        val foreignKeywords = listOf("ferromex", "via rail", "foreign power", "foreign unit",
+            "mexican power", "canadian national power", "canadian pacific power", "kcs de mexico")
+        if (foreignKeywords.any { lower.contains(it) }) unlockAchievement("a12")
     }
 
     // ── Approach notifications ────────────────────────────────────────────────
@@ -1153,6 +1229,12 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private fun checkTrainAchievements(trains: List<TrainLocation>) {
         if (trains.isEmpty()) return
 
+        // Amtrak Spotter: any live Amtrak train visible
+        if (trains.any { it.railroad == Railroad.AMTRAK }) unlockAchievement("a7")
+
+        // Commuter Pass: any commuter/regional rail train visible (non-Amtrak agencies map to OTHER)
+        if (trains.any { it.railroad == Railroad.OTHER }) unlockAchievement("a8")
+
         // Speed Demon: any live train over 79 mph
         if (trains.any { it.speedMph > 79 }) {
             unlockAchievement("a5")
@@ -1174,8 +1256,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+        // Century Club: any live train over 100 mph
+        if (trains.any { it.speedMph > 99 }) unlockAchievement("a11")
+
         // Grain Rush: Aug–Oct, any train spotted
-        val month = Calendar.getInstance().get(Calendar.MONTH) + 1 // 1-based
+        val month = Calendar.getInstance().get(Calendar.MONTH) + 1
         if (month in 8..10) unlockAchievement("a3")
     }
 
@@ -1260,6 +1345,22 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearSpotSubmitError() { _spotSubmitError.value = null }
 
+    // ── Railway map lines (Overpass) ───────────────────────────────────────────
+    private val _railwaySegments = MutableStateFlow<List<com.railfancopilot.app.data.models.RailwaySegment>>(emptyList())
+    val railwaySegments: StateFlow<List<com.railfancopilot.app.data.models.RailwaySegment>> = _railwaySegments.asStateFlow()
+    private var isFetchingRailLines = false
+
+    fun fetchRailwaySegments(south: Double, west: Double, north: Double, east: Double) {
+        if (isFetchingRailLines) return
+        viewModelScope.launch {
+            isFetchingRailLines = true
+            val segments = com.railfancopilot.app.data.repository.OverpassFetcher
+                .fetchRailwaySegments(south, west, north, east)
+            if (segments.isNotEmpty()) _railwaySegments.value = segments
+            isFetchingRailLines = false
+        }
+    }
+
     // ── Watchlist ──────────────────────────────────────────────────────────────
 
     private val WATCHLIST_CHANNEL = "watchlist_alerts"
@@ -1284,11 +1385,17 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                         .getWatchlistFlow(uid)
                         .collect { _watchlist.value = it }
                 }
-                // Create watchlist notification channel
+                // Start Firestore heritage/special alerts listener
+                startFirestoreAlertsListener()
+
+                // Create notification channels
                 val mgr = getApplication<Application>().getSystemService(android.app.NotificationManager::class.java)
                 mgr.createNotificationChannel(android.app.NotificationChannel(
                     WATCHLIST_CHANNEL, "Watchlist Alerts", android.app.NotificationManager.IMPORTANCE_HIGH
                 ).apply { description = "Alerts when a watched locomotive or train symbol is spotted" })
+                mgr.createNotificationChannel(android.app.NotificationChannel(
+                    "heritage_alerts", "Heritage Unit Alerts", android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply { description = "Alerts when a verified heritage or special locomotive is spotted" })
             } catch (e: Exception) {
                 android.util.Log.e("RailFanVM", "Auth failed: ${e.message}", e)
             }

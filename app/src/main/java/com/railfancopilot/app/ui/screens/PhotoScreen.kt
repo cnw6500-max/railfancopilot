@@ -463,6 +463,16 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     // ── Loco Identifier result ────────────────────────────────────────────────
     val locoResultText = locoIdResult ?: locoIdError
     if (locoResultText != null && !isIdentifying) {
+        val resultLower = locoIdResult?.lowercase() ?: ""
+        val isHeritage = locoIdResult != null && listOf(
+            "heritage", "retro", "patched", "spirit of", "fallen flag",
+            "commemorative", "historic", "paint scheme", "special livery"
+        ).any { resultLower.contains(it) }
+        val isForeign = locoIdResult != null && listOf(
+            "ferromex", "via rail", "foreign power", "foreign unit",
+            "mexican power", "canadian national power", "canadian pacific power", "kcs de mexico"
+        ).any { resultLower.contains(it) }
+
         AlertDialog(
             onDismissRequest = { vm.clearLocoIdResult() },
             containerColor = BgCard,
@@ -477,7 +487,28 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     Text(if (locoIdError != null) "Error" else "Locomotive Identified", color = TextPrimary, fontSize = 16.sp)
                 }
             },
-            text = { Text(locoResultText, color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (isHeritage || isForeign) {
+                        val badgeColor = if (isHeritage) Color(0xFF2E7D32) else Color(0xFF1565C0)
+                        val badgeBg   = if (isHeritage) Color(0xFF0F2D10) else Color(0xFF0D1F38)
+                        val badgeLabel = if (isHeritage) "Heritage Unit Detected" else "Rare Find — Foreign Power"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(badgeBg)
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Star, null, tint = badgeColor, modifier = Modifier.size(14.dp))
+                            Text(badgeLabel, color = badgeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                    Text(locoResultText, color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+            },
             confirmButton = {
                 Button(onClick = { vm.clearLocoIdResult() }, colors = ButtonDefaults.buttonColors(containerColor = RailBlue)) {
                     Text("Close")

@@ -109,8 +109,8 @@ fun SavedLocationsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             defaultLat = userLocation?.latitude,
             defaultLon = userLocation?.longitude,
             onDismiss = { showSaveDialog = false },
-            onSave = { name, notes, lat, lon ->
-                vm.saveLocation(lat, lon, name, notes)
+            onSave = { name, notes, subdivision, scannerFreq, photoTips, lat, lon ->
+                vm.saveLocation(lat, lon, name, notes, subdivision, scannerFreq, photoTips)
                 showSaveDialog = false
             }
         )
@@ -168,6 +168,12 @@ fun SavedLocationCard(location: SavedLocation, onDelete: () -> Unit) {
             if (!location.subdivision.isNullOrBlank()) {
                 Text(location.subdivision, color = RailBlue, fontSize = 11.sp)
             }
+            if (!location.scannerFrequency.isNullOrBlank()) {
+                Text("Scanner: ${location.scannerFrequency}", color = TextMuted, fontSize = 11.sp)
+            }
+            if (!location.photoTips.isNullOrBlank()) {
+                Text(location.photoTips, color = TextSecondary, fontSize = 11.sp, maxLines = 2)
+            }
             Text(dateStr, color = TextMuted, fontSize = 11.sp)
         }
 
@@ -201,13 +207,19 @@ fun SaveLocationDialog(
     defaultLat: Double?,
     defaultLon: Double?,
     onDismiss: () -> Unit,
-    onSave: (name: String, notes: String?, lat: Double, lon: Double) -> Unit
+    onSave: (name: String, notes: String?, subdivision: String?, scannerFreq: String?, photoTips: String?, lat: Double, lon: Double) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var name        by remember { mutableStateOf("") }
+    var notes       by remember { mutableStateOf("") }
+    var subdivision by remember { mutableStateOf("") }
+    var scannerFreq by remember { mutableStateOf("") }
+    var photoTips   by remember { mutableStateOf("") }
 
-    val nameFocus = remember { FocusRequester() }
-    val notesFocus = remember { FocusRequester() }
+    val nameFocus       = remember { FocusRequester() }
+    val notesFocus      = remember { FocusRequester() }
+    val subdivFocus     = remember { FocusRequester() }
+    val frequencyFocus  = remember { FocusRequester() }
+    val tipsFocus       = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { nameFocus.requestFocus() }
 
@@ -223,6 +235,13 @@ fun SaveLocationDialog(
         focusedTextColor = TextPrimary,
         unfocusedTextColor = TextPrimary
     )
+
+    fun doSave() {
+        val lat = defaultLat; val lon = defaultLon
+        if (name.isNotBlank() && lat != null && lon != null)
+            onSave(name, notes.ifBlank { null }, subdivision.ifBlank { null },
+                scannerFreq.ifBlank { null }, photoTips.ifBlank { null }, lat, lon)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -275,23 +294,51 @@ fun SaveLocationDialog(
                     modifier = Modifier.fillMaxWidth().focusRequester(notesFocus),
                     colors = fieldColors,
                     minLines = 2,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { subdivFocus.requestFocus() })
+                )
+
+                OutlinedTextField(
+                    value = subdivision,
+                    onValueChange = { subdivision = it },
+                    label = { Text("Subdivision (optional)", color = TextMuted) },
+                    placeholder = { Text("e.g. Transcon, Mains, Springfield", color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(subdivFocus),
+                    colors = fieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { frequencyFocus.requestFocus() })
+                )
+
+                OutlinedTextField(
+                    value = scannerFreq,
+                    onValueChange = { scannerFreq = it },
+                    label = { Text("Scanner frequency (optional)", color = TextMuted) },
+                    placeholder = { Text("e.g. 161.100", color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(frequencyFocus),
+                    colors = fieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { tipsFocus.requestFocus() })
+                )
+
+                OutlinedTextField(
+                    value = photoTips,
+                    onValueChange = { photoTips = it },
+                    label = { Text("Photo tips (optional)", color = TextMuted) },
+                    placeholder = { Text("Best angle, time of day, access notes…", color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(tipsFocus),
+                    colors = fieldColors,
+                    minLines = 2,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        val lat = defaultLat; val lon = defaultLon
-                        if (name.isNotBlank() && lat != null && lon != null)
-                            onSave(name, notes.ifBlank { null }, lat, lon)
-                    })
+                    keyboardActions = KeyboardActions(onDone = { doSave() })
                 )
             }
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
                 TextButton(
-                    onClick = {
-                        val lat = defaultLat; val lon = defaultLon
-                        if (name.isNotBlank() && lat != null && lon != null)
-                            onSave(name, notes.ifBlank { null }, lat, lon)
-                    },
+                    onClick = { doSave() },
                     enabled = name.isNotBlank() && hasGps
                 ) { Text("Save", color = if (name.isNotBlank() && hasGps) RailBlue else TextMuted) }
                 if (!hasGps) {

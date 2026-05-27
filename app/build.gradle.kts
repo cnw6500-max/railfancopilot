@@ -22,8 +22,8 @@ android {
         applicationId = "com.railfancopilot.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "2.3.1"
+        versionCode = 25
+        versionName = "2.4.0"
 
         val mapsKey = localProps.getProperty("MAPS_API_KEY") ?: ""
         manifestPlaceholders["MAPS_API_KEY"] = mapsKey

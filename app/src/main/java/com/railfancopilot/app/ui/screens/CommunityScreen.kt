@@ -343,6 +343,30 @@ fun ReportCard(
             }
         }
 
+        // Heritage unit hint — shown when the sighting text matches a known heritage road number
+        val heritageMatch = remember(report.text, report.trainSymbol) {
+            val combined = "${report.text} ${report.trainSymbol ?: ""}".uppercase()
+            com.railfancopilot.app.data.models.HERITAGE_UNITS.firstOrNull { unit ->
+                Regex("\\b${unit.roadNumber}\\b").containsMatchIn(combined)
+            }
+        }
+        heritageMatch?.let { unit ->
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF2A2000))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text("🏆", fontSize = 11.sp)
+                Text("Heritage: ${unit.schemeName}",
+                    color = androidx.compose.ui.graphics.Color(0xFFFFD700),
+                    fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+
         // Photo thumbnail — remote URL (Coil) or local bitmap
         if (isRemotePhoto) {
             Spacer(Modifier.height(8.dp))

@@ -7,7 +7,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.functions.FirebaseFunctions
 import com.railfancopilot.app.data.models.CommunityReport
+import com.railfancopilot.app.data.models.RailAlert
+import com.railfancopilot.app.data.models.RailAlertType
 import com.railfancopilot.app.data.models.SightingComment
 import com.railfancopilot.app.data.models.WatchlistEntry
 import com.railfancopilot.app.data.models.WatchlistType
@@ -195,6 +198,7 @@ object FirestoreCommunityRepo {
             }
         }
 
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
         val doc = hashMapOf<String, Any?>(
             "railroad"     to (railroad ?: "Unknown"),
             "trainSymbol"  to (trainSymbol ?: "Unknown"),
@@ -203,6 +207,7 @@ object FirestoreCommunityRepo {
             "latitude"     to lat,
             "longitude"    to lon,
             "reporterName" to reporterName,
+            "reporterUid"  to uid,
             "timestampMs"  to System.currentTimeMillis().toDouble(),
             "upvotes"      to 0L,
             "consist"      to (consist ?: ""),
@@ -217,11 +222,52 @@ object FirestoreCommunityRepo {
         }
     }
 
-    // ── Upvote a sighting ─────────────────────────────────────────────────────
+    // ── Upvote a sighting + credit reporter score ─────────────────────────────
 
     fun upvote(sightingId: String) {
         db.collection(COLLECTION).document(sightingId)
             .update("upvotes", com.google.firebase.firestore.FieldValue.increment(1))
+        // Tell the Function to increment the reporter's score
+        FirebaseFunctions.getInstance()
+            .getHttpsCallable("onSightingUpvoted")
+            .call(hashMapOf("sightingId" to sightingId))
+            .addOnFailureListener { /* best-effort */ }
+    }
+
+    // ── Real-time flow of heritage / special alerts ───────────────────────────
+
+    fun getAlertsFlow(): Flow<List<RailAlert>> = callbackFlow {
+        val reg = db.collection("rail_alerts")
+            .orderBy("timestampMs", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(50)
+            .addSnapshotListener { snap, err ->
+                if (err != null) return@addSnapshotListener
+                val alerts = snap?.documents?.mapNotNull { doc ->
+                    try {
+                        val typeStr = doc.getString("type") ?: return@mapNotNull null
+                        val type = try { RailAlertType.valueOf(typeStr) }
+                                   catch (_: Exception) { RailAlertType.RARE_LOCO }
+                        RailAlert(
+                            id           = doc.id,
+                            type         = type,
+                            title        = doc.getString("title")    ?: "",
+                            message      = doc.getString("message")  ?: "",
+                            timestampMs  = doc.getLong("timestampMs")
+                                           ?: doc.getDouble("timestampMs")?.toLong()
+                                           ?: System.currentTimeMillis(),
+                            latitude     = doc.getDouble("latitude"),
+                            longitude    = doc.getDouble("longitude"),
+                            trainSymbol  = doc.getString("trainSymbol"),
+                            isVerified   = doc.getBoolean("isVerified") ?: false,
+                            reporterScore= (doc.getLong("reporterScore") ?: 0L).toInt(),
+                            locoNumber   = doc.getString("locoNumber"),
+                            heritageName = doc.getString("heritageName"),
+                        )
+                    } catch (_: Exception) { null }
+                } ?: emptyList()
+                trySend(alerts)
+            }
+        awaitClose { reg.remove() }
     }
 
     // ── Comments subcollection ────────────────────────────────────────────────

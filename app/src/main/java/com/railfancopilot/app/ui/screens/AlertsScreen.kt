@@ -39,6 +39,7 @@ fun AlertsScreen(vm: RailFanViewModel) {
     val highSpeed    by vm.alertHighSpeed.collectAsState()
     val scanner      by vm.alertScanner.collectAsState()
     val approaching  by vm.alertApproaching.collectAsState()
+    val heritage     by vm.alertHeritage.collectAsState()
     val userLocation by vm.userLocation.collectAsState()
 
     LaunchedEffect(Unit) { vm.markAllAlertsRead() }
@@ -104,7 +105,13 @@ fun AlertsScreen(vm: RailFanViewModel) {
                 AlertToggleRow(
                     emoji = "🚂", label = "Train Approaching",
                     subtitle = "Trains within your ETA threshold",
-                    checked = approaching, onCheckedChange = vm::setAlertApproaching,
+                    checked = approaching, onCheckedChange = vm::setAlertApproaching
+                )
+                HorizontalDivider(color = Border, thickness = 0.5.dp)
+                AlertToggleRow(
+                    emoji = "🏆", label = "Heritage & Special Units",
+                    subtitle = "Verified heritage liveries, presidential units, rare steam",
+                    checked = heritage, onCheckedChange = vm::setAlertHeritage,
                     isLast = true
                 )
             }
@@ -187,11 +194,13 @@ fun AlertCard(alert: RailAlert, userLocation: android.location.Location? = null)
     }
 
     val (accent, bg) = when (alert.type) {
-        RailAlertType.HOT_TRAIN       -> RailRed    to AlertBgDanger
-        RailAlertType.RARE_LOCO       -> RailAmber  to AlertBgWarning
-        RailAlertType.HIGH_SPEED      -> RailBlue   to RailBlueDark
-        RailAlertType.SCANNER_ACTIVITY-> RailGreen  to StatusBgGreen
-        RailAlertType.TRAIN_APPROACHING-> RailAmber to AlertBgWarning
+        RailAlertType.HOT_TRAIN        -> RailRed                        to AlertBgDanger
+        RailAlertType.RARE_LOCO        -> RailAmber                      to AlertBgWarning
+        RailAlertType.HIGH_SPEED       -> RailBlue                       to RailBlueDark
+        RailAlertType.SCANNER_ACTIVITY -> RailGreen                      to StatusBgGreen
+        RailAlertType.TRAIN_APPROACHING-> RailAmber                      to AlertBgWarning
+        RailAlertType.HERITAGE_UNIT    -> androidx.compose.ui.graphics.Color(0xFFFFD700) to androidx.compose.ui.graphics.Color(0xFF2A2000)
+        RailAlertType.SPECIAL_MOVE     -> RailPurple                     to androidx.compose.ui.graphics.Color(0xFF1A0A2A)
     }
 
     Row(
@@ -218,7 +227,19 @@ fun AlertCard(alert: RailAlert, userLocation: android.location.Location? = null)
 
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(alert.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(alert.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f, fill = false))
+                if (alert.isVerified) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(androidx.compose.ui.graphics.Color(0xFF2A2000))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text("✓ Verified", color = androidx.compose.ui.graphics.Color(0xFFFFD700),
+                            fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
                 if (!alert.isRead) {
                     Box(
                         modifier = Modifier
@@ -227,6 +248,10 @@ fun AlertCard(alert: RailAlert, userLocation: android.location.Location? = null)
                             .background(RailBlue)
                     )
                 }
+            }
+            alert.heritageName?.let { scheme ->
+                Text(scheme, color = androidx.compose.ui.graphics.Color(0xFFFFD700),
+                    fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(2.dp))
             Text(alert.message, color = TextSecondary, fontSize = 12.sp, lineHeight = 18.sp)
@@ -262,11 +287,13 @@ fun RailAlertBanner(alert: RailAlert, onDismiss: () -> Unit) {
     }
 
     val (accent, bg) = when (alert.type) {
-        RailAlertType.HOT_TRAIN        -> RailRed   to AlertBgDanger
-        RailAlertType.RARE_LOCO        -> RailAmber to AlertBgWarning
-        RailAlertType.HIGH_SPEED       -> RailBlue  to RailBlueDark
-        RailAlertType.SCANNER_ACTIVITY -> RailGreen to StatusBgGreen
-        RailAlertType.TRAIN_APPROACHING-> RailAmber to AlertBgWarning
+        RailAlertType.HOT_TRAIN        -> RailRed                        to AlertBgDanger
+        RailAlertType.RARE_LOCO        -> RailAmber                      to AlertBgWarning
+        RailAlertType.HIGH_SPEED       -> RailBlue                       to RailBlueDark
+        RailAlertType.SCANNER_ACTIVITY -> RailGreen                      to StatusBgGreen
+        RailAlertType.TRAIN_APPROACHING-> RailAmber                      to AlertBgWarning
+        RailAlertType.HERITAGE_UNIT    -> androidx.compose.ui.graphics.Color(0xFFFFD700) to androidx.compose.ui.graphics.Color(0xFF2A2000)
+        RailAlertType.SPECIAL_MOVE     -> RailPurple                     to androidx.compose.ui.graphics.Color(0xFF1A0A2A)
     }
 
     Row(
