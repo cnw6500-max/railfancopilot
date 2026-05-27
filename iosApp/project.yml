@@ -60,6 +60,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
           NSAllowsArbitraryLoadsInWebContent: true
+        ITSAppUsesNonExemptEncryption: false
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.ronminor.railfancopilot
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
