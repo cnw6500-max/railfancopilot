@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import shared
 
 struct SpotsView: View {
     @ObservedObject var vm: RailFanViewModel
