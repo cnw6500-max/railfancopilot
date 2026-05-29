@@ -28,9 +28,10 @@ import java.util.UUID
 
 @Composable
 fun WatchlistScreen(vm: RailFanViewModel) {
-    val watchlist by vm.watchlist.collectAsState()
-    val userId   by vm.currentUserId.collectAsState()
-    var showAdd  by remember { mutableStateOf(false) }
+    val watchlist  by vm.watchlist.collectAsState()
+    val userId     by vm.currentUserId.collectAsState()
+    val authFailed by vm.authFailed.collectAsState()
+    var showAdd    by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -62,7 +63,9 @@ fun WatchlistScreen(vm: RailFanViewModel) {
 
             HorizontalDivider(color = Border)
 
-            if (watchlist.isEmpty()) {
+            if (authFailed) {
+                WatchlistAuthErrorState(onRetry = { vm.retryAuth() })
+            } else if (watchlist.isEmpty()) {
                 WatchlistEmptyState(onAdd = { showAdd = true }, authReady = userId != null)
             } else {
                 LazyColumn(
@@ -88,6 +91,38 @@ fun WatchlistScreen(vm: RailFanViewModel) {
                 showAdd = false
             }
         )
+    }
+}
+
+@Composable
+private fun WatchlistAuthErrorState(onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("⚠️", fontSize = 48.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Could not connect",
+            color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Watchlist requires a network connection. Check your connection and tap Retry.",
+            color = TextSecondary, fontSize = 13.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 20.sp
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = onRetry,
+            colors = ButtonDefaults.buttonColors(containerColor = RailBlue)
+        ) {
+            Text("Retry", color = Color.White)
+        }
     }
 }
 

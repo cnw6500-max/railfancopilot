@@ -7,7 +7,10 @@ struct CommunityView: View {
     @State private var showAddSighting = false
 
     var filteredSightings: [FirestoreSighting] {
-        firestore.sightings.filter { $0.distanceMiles <= distanceFilter }
+        // When location is unknown the distances are calculated from (0,0) and are meaningless;
+        // show all sightings so the list isn't empty while waiting for a GPS fix.
+        guard vm.userLocation != nil else { return firestore.sightings }
+        return firestore.sightings.filter { $0.distanceMiles <= distanceFilter }
     }
 
     var body: some View {
@@ -106,14 +109,17 @@ struct CommunityView: View {
                 }
             }
             .onAppear {
-                // If location isn't available yet use a wide radius so no sightings are filtered out
                 let lat = vm.userLocation?.latitude ?? 0.0
                 let lon = vm.userLocation?.longitude ?? 0.0
-                let radius = vm.userLocation != nil ? distanceFilter : 25000.0
-                firestore.startListening(lat: lat, lon: lon, radiusMiles: radius)
+                firestore.startListening(lat: lat, lon: lon, radiusMiles: distanceFilter)
             }
             .onDisappear {
                 firestore.stopListening()
+            }
+            .onChange(of: vm.userLocation) { newLocation in
+                // Restart listener with real coordinates once GPS becomes available
+                guard let loc = newLocation else { return }
+                firestore.startListening(lat: loc.latitude, lon: loc.longitude, radiusMiles: distanceFilter)
             }
             .sheet(isPresented: $showAddSighting) {
                 AddSightingView(vm: vm, isPresented: $showAddSighting)

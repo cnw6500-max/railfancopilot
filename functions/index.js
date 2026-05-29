@@ -10,6 +10,7 @@ admin.initializeApp();
 
 async function callAnthropic(body) {
     const apiKey = process.env.ANTHROPIC_KEY;
+    if (!apiKey) throw new functions.https.HttpsError('failed-precondition', 'AI service not configured');
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {

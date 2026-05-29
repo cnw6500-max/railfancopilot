@@ -533,12 +533,12 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                         if (seenRailroads.size >= 3) unlockAchievement("a17")
                     }
                 }.onFailure {
-                    _decodeError.value = "Could not decode symbol. Check your API key or try again."
+                    _decodeError.value = "Decode service is temporarily unavailable. Please try again."
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _decodeError.value = "Could not decode symbol. Check your API key or try again."
+                _decodeError.value = "Decode service is temporarily unavailable. Please try again."
             } finally {
                 _isDecoding.value = false
             }
@@ -1368,16 +1368,21 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _currentUserId = MutableStateFlow<String?>(null)
     val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
 
+    private val _authFailed = MutableStateFlow(false)
+    val authFailed: StateFlow<Boolean> = _authFailed.asStateFlow()
+
     private val _watchlist = MutableStateFlow<List<com.railfancopilot.app.data.models.WatchlistEntry>>(emptyList())
     val watchlist: StateFlow<List<com.railfancopilot.app.data.models.WatchlistEntry>> = _watchlist.asStateFlow()
 
     private var watchlistListenerJob: kotlinx.coroutines.Job? = null
 
     private fun initAuth() {
+        _authFailed.value = false
         viewModelScope.launch {
             try {
                 val uid = com.railfancopilot.app.data.repository.FirestoreCommunityRepo.ensureAnonymousAuth()
                 _currentUserId.value = uid
+                _authFailed.value = false
                 // Start listening to this user's watchlist
                 watchlistListenerJob?.cancel()
                 watchlistListenerJob = viewModelScope.launch {
@@ -1398,9 +1403,12 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                 ).apply { description = "Alerts when a verified heritage or special locomotive is spotted" })
             } catch (e: Exception) {
                 android.util.Log.e("RailFanVM", "Auth failed: ${e.message}", e)
+                _authFailed.value = true
             }
         }
     }
+
+    fun retryAuth() { initAuth() }
 
     fun addToWatchlist(entry: com.railfancopilot.app.data.models.WatchlistEntry) {
         val uid = _currentUserId.value ?: return

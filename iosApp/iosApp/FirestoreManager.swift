@@ -22,7 +22,13 @@ struct FirestoreSighting: Identifiable, Codable {
         return max(0, Int(ms / 60000))
     }
 
+    // Client-side only — excluded from Firestore encoding
     var distanceMiles: Double = 0
+
+    enum CodingKeys: String, CodingKey {
+        case id, railroad, trainSymbol, location, notes
+        case latitude, longitude, reporterName, timestampMs, upvotes, photoUrl
+    }
 }
 
 // ── Watchlist models ──────────────────────────────────────────────────────────
