@@ -70,7 +70,13 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         radioChannels = helper.getAARFrequencies() as? [RadioChannel] ?? []
         loadSavedLocations()
         isPremium = UserDefaults.standard.bool(forKey: "isPremium")
-        Task { await FirestoreManager.shared.ensureAuth() }
+        Task {
+            await FirestoreManager.shared.ensureAuth()
+            // Verify premium status against StoreKit (handles reinstalls & new devices)
+            if await StoreManager.shared.checkEntitlement() {
+                unlockPremium()
+            }
+        }
     }
 
     deinit { helper.cancel() }
@@ -119,8 +125,16 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     var filteredTrains: [TrainLocation] {
-        guard let filter = selectedRailroad else { return trains }
-        return trains.filter { $0.railroad.name == filter }
+        trains.filter { train in
+            let rr = train.railroad.name
+            // Apply railroad-type toggles from Settings
+            if !showAmtrak  && rr == "AMTRAK"                              { return false }
+            if !showCommuter && rr == "OTHER"                              { return false }
+            if !showFreight  && ["BNSF","UP","CSX","NS","CN","CP","KCS"].contains(rr) { return false }
+            // Apply chip filter (nil = all)
+            if let chip = selectedRailroad, rr != chip                    { return false }
+            return true
+        }
     }
 
     func setRailroadFilter(_ name: String?) { selectedRailroad = name }

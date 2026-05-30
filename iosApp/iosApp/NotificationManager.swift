@@ -1,6 +1,7 @@
 import Foundation
 import UserNotifications
 import CoreLocation
+import SwiftUI
 
 @MainActor
 class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
@@ -33,9 +34,15 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
     func sendApproachNotification(trainSymbol: String, railroad: String, etaMinutes: Int, locationName: String) {
         guard isAuthorized else { return }
 
+        let title = "🚂 Train Approaching \(locationName)"
+        let body  = "\(railroad) \(trainSymbol) is approximately \(etaMinutes) min away"
+
+        // Write to in-app Alerts tab
+        AlertStore.shared.add(title: title, body: body)
+
         let content = UNMutableNotificationContent()
-        content.title = "🚂 Train Approaching \(locationName)"
-        content.body = "\(railroad) \(trainSymbol) is approximately \(etaMinutes) min away"
+        content.title = title
+        content.body  = body
         content.sound = .default
         content.categoryIdentifier = "TRAIN_APPROACH"
 

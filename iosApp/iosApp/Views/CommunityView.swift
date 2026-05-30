@@ -112,7 +112,8 @@ struct CommunityView: View {
             .onAppear {
                 let lat = vm.userLocation?.latitude ?? 0.0
                 let lon = vm.userLocation?.longitude ?? 0.0
-                firestore.startListening(lat: lat, lon: lon, radiusMiles: distanceFilter)
+                // Always fetch at max radius; slider does client-side filtering only
+                firestore.startListening(lat: lat, lon: lon, radiusMiles: 200)
             }
             .onDisappear {
                 firestore.stopListening()
@@ -120,7 +121,7 @@ struct CommunityView: View {
             .onChange(of: vm.userLocation) { newLocation in
                 // Restart listener with real coordinates once GPS becomes available
                 guard let loc = newLocation else { return }
-                firestore.startListening(lat: loc.latitude, lon: loc.longitude, radiusMiles: distanceFilter)
+                firestore.startListening(lat: loc.latitude, lon: loc.longitude, radiusMiles: 200)
             }
             .sheet(isPresented: $showAddSighting) {
                 AddSightingView(vm: vm, isPresented: $showAddSighting)

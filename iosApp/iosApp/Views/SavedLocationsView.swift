@@ -257,8 +257,8 @@ struct AddLocationSheet: View {
                             text: $subdivision)
                         LocationTextField(label: "Scanner frequency",
                             placeholder: "e.g. 161.100",
-                            text: $frequency)
-                            .keyboardType(.decimalPad)
+                            text: $frequency,
+                            keyboardType: .decimalPad)
                         LocationTextField(label: "Photo tips",
                             placeholder: "Best angle, time of day, access notes…",
                             text: $photoTips, multiline: true)
@@ -321,6 +321,7 @@ struct LocationDetailSheet: View {
     let loc: SavedLocationShared
     @ObservedObject var vm: RailFanViewModel
     @Environment(\.dismiss) var dismiss
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         NavigationView {
@@ -383,9 +384,8 @@ struct LocationDetailSheet: View {
                     .padding(.horizontal)
 
                     // Delete button
-                    Button(role: .destructive) {
-                        vm.deleteLocation(id: loc.id)
-                        dismiss()
+                    Button {
+                        showDeleteConfirm = true
                     } label: {
                         Label("Delete Location", systemImage: "trash")
                             .font(.system(size: 15, weight: .medium))
@@ -398,6 +398,17 @@ struct LocationDetailSheet: View {
                                 .stroke(Color.red.opacity(0.3), lineWidth: 0.5))
                     }
                     .padding(.horizontal)
+                    .confirmationDialog(
+                        "Delete \"\(loc.name)\"?",
+                        isPresented: $showDeleteConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete", role: .destructive) {
+                            vm.deleteLocation(id: loc.id)
+                            dismiss()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
 
                     Spacer(minLength: 40)
                 }
@@ -446,6 +457,7 @@ private struct LocationTextField: View {
     let placeholder: String
     @Binding var text: String
     var multiline = false
+    var keyboardType: UIKeyboardType = .default
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -462,6 +474,7 @@ private struct LocationTextField: View {
                 TextField(placeholder, text: $text)
                     .textFieldStyle(.plain)
                     .foregroundColor(.textPrimary)
+                    .keyboardType(keyboardType)
                     .padding(12)
                     .background(Color.bgCard)
                     .cornerRadius(10)

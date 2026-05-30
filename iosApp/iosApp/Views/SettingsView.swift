@@ -35,7 +35,11 @@ struct SettingsView: View {
 
                     // App info
                     Section(header: Text("About").foregroundColor(.textMuted)) {
-                        InfoRow(label: "Version",   value: "2.1.3 (21)")
+                        InfoRow(label: "Version",   value: {
+                            let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+                            let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+                            return "\(v) (\(b))"
+                        }())
                         InfoRow(label: "Platform",  value: "iOS — Powered by KMP")
                         InfoRow(label: "Map data",  value: "Apple Maps (MapKit)")
                         InfoRow(label: "Rosters",   value: "DieselShop.us")
