@@ -313,12 +313,13 @@ object FirestoreCommunityRepo {
 
     // ── Delete a sighting ─────────────────────────────────────────────────────
 
-    fun deleteSighting(sightingId: String) {
-        db.collection(COLLECTION).document(sightingId).delete()
-            .addOnFailureListener { e ->
-                if (com.railfancopilot.app.BuildConfig.DEBUG)
-                    android.util.Log.e("FirestoreRepo", "deleteSighting failed: ${e.message}", e)
-            }
+    suspend fun deleteSighting(sightingId: String) {
+        try {
+            db.collection(COLLECTION).document(sightingId).delete().await()
+        } catch (e: Exception) {
+            if (com.railfancopilot.app.BuildConfig.DEBUG)
+                android.util.Log.e("FirestoreRepo", "deleteSighting failed: ${e.message}", e)
+        }
     }
 
     // ── Anonymous auth + FCM token registration ───────────────────────────────
@@ -335,7 +336,7 @@ object FirestoreCommunityRepo {
             db.collection("users").document(uid).set(
                 hashMapOf("fcmToken" to token),
                 com.google.firebase.firestore.SetOptions.merge()
-            )
+            ).await()
         } catch (_: Exception) { }
         return uid
     }

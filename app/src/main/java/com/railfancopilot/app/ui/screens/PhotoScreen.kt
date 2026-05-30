@@ -113,7 +113,7 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         bitmap ?: return@rememberLauncherForActivityResult
-        scope.launch(Dispatchers.Default) {
+        scope.launch(Dispatchers.IO) {
             val thumbPath = saveBitmapToFile(context, bitmap.scaleToMax(400), "loco_${System.currentTimeMillis()}")
             val base64 = bitmap.scaleToMax(800).toBase64Jpeg()
             withContext(Dispatchers.Main) { vm.identifyLocomotive(base64, thumbPath) }
@@ -140,7 +140,7 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         bitmap ?: return@rememberLauncherForActivityResult
-        scope.launch(Dispatchers.Default) {
+        scope.launch(Dispatchers.IO) {
             val base64 = bitmap.scaleToMax(1200).toBase64Jpeg()
             withContext(Dispatchers.Main) { vm.analyzeConsist(base64) }
         }
