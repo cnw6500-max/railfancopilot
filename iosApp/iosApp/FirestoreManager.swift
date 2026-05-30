@@ -150,13 +150,26 @@ class FirestoreManager: ObservableObject {
 
     func submitSighting(
         railroad: String, trainSymbol: String, location: String,
-        notes: String, lat: Double, lon: Double, reporterName: String = "Railfan"
+        notes: String, lat: Double, lon: Double, reporterName: String = "Railfan",
+        photoData: Data? = nil
     ) async throws {
-        let sighting = FirestoreSighting(
+        // Upload photo to Firebase Storage if provided
+        var photoUrl: String? = nil
+        if let data = photoData {
+            let ref = storage.reference()
+                .child("sightings/\(UUID().uuidString)/photo.jpg")
+            let meta = StorageMetadata()
+            meta.contentType = "image/jpeg"
+            _ = try await ref.putDataAsync(data, metadata: meta)
+            photoUrl = try await ref.downloadURL().absoluteString
+        }
+
+        var sighting = FirestoreSighting(
             railroad: railroad, trainSymbol: trainSymbol, location: location,
             notes: notes, latitude: lat, longitude: lon,
             reporterName: reporterName,
-            timestampMs: Date().timeIntervalSince1970 * 1000, upvotes: 0
+            timestampMs: Date().timeIntervalSince1970 * 1000, upvotes: 0,
+            photoUrl: photoUrl
         )
         try db.collection("sightings").addDocument(from: sighting)
     }

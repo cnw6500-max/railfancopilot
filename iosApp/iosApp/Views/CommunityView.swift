@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct CommunityView: View {
     @ObservedObject var vm: RailFanViewModel
@@ -265,6 +266,10 @@ struct AddSightingView: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String? = nil
 
+    // Photo
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var selectedImage: UIImage? = nil
+
     private let railroads = ["BNSF", "UP", "CSX", "NS", "CN", "CP", "Amtrak", "Metra", "MBTA", "LIRR", "Metro-North", "SEPTA", "Caltrain", "Sound Transit", "Other"]
 
     var body: some View {
@@ -340,6 +345,54 @@ struct AddSightingView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
                         }
 
+                        // Photo picker
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Photo (optional)").font(.system(size: 13)).foregroundColor(.textMuted)
+                            if let image = selectedImage {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 160)
+                                        .clipped()
+                                        .cornerRadius(10)
+                                    Button {
+                                        selectedImage = nil
+                                        selectedPhotoItem = nil
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 22))
+                                            .foregroundColor(.white)
+                                            .shadow(radius: 2)
+                                            .padding(6)
+                                    }
+                                }
+                            } else {
+                                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                    HStack {
+                                        Image(systemName: "photo.badge.plus")
+                                        Text("Add Photo")
+                                    }
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.railBlue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.bgCard)
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
+                                }
+                                .onChange(of: selectedPhotoItem) { item in
+                                    Task {
+                                        if let data = try? await item?.loadTransferable(type: Data.self),
+                                           let uiImage = UIImage(data: data) {
+                                            selectedImage = uiImage
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         if let err = errorMessage {
                             Text(err).font(.system(size: 13)).foregroundColor(.orange)
                         }
@@ -389,6 +442,9 @@ struct AddSightingView: View {
         let lat = vm.userLocation?.latitude ?? 0.0
         let lon = vm.userLocation?.longitude ?? 0.0
         let name = effectiveReporterName
+        let photoData = selectedImage.flatMap {
+            $0.jpegData(compressionQuality: 0.8)
+        }
 
         Task {
             do {
@@ -399,7 +455,8 @@ struct AddSightingView: View {
                     notes: notes,
                     lat: lat,
                     lon: lon,
-                    reporterName: name
+                    reporterName: name,
+                    photoData: photoData
                 )
                 isPresented = false
             } catch {

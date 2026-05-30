@@ -188,7 +188,10 @@ object FirestoreCommunityRepo {
                 if (file.exists()) {
                     val ref = FirebaseStorage.getInstance().reference
                         .child("sightings/${UUID.randomUUID()}/photo.jpg")
-                    ref.putFile(Uri.fromFile(file)).await()
+                    val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                        .setContentType("image/jpeg")
+                        .build()
+                    ref.putFile(Uri.fromFile(file), metadata).await()
                     ref.downloadUrl.await().toString()
                 } else null
             } catch (e: Exception) {
