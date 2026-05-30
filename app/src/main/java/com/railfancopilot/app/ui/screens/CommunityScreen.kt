@@ -1,11 +1,16 @@
 package com.railfancopilot.app.ui.screens
 
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.location.Location
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.speech.RecognizerIntent
+import androidx.core.content.FileProvider
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -673,9 +678,15 @@ fun SubmitReportDialog(
         }
     }
 
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        bitmap ?: return@rememberLauncherForActivityResult
-        scope.launch(Dispatchers.Default) {
+    var pendingPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (!success) return@rememberLauncherForActivityResult
+        val uri = pendingPhotoUri ?: return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val bitmap = context.contentResolver.openInputStream(uri)
+                ?.use { BitmapFactory.decodeStream(it) }
+                ?: return@launch
             val scaled = bitmap.scaleToMax(800)
             val path = saveBitmapToFile(context, scaled, "report_${System.currentTimeMillis()}")
             withContext(Dispatchers.Main) { selectedBitmap = bitmap.scaleToMax(400); savedPhotoPath = path }
@@ -1086,7 +1097,25 @@ fun SubmitReportDialog(
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = { cameraLauncher.launch(null) },
+                            onClick = {
+                                // Android 10+: insert into MediaStore so the photo appears in the gallery
+                                // Android 8-9: use FileProvider (app-private, no gallery)
+                                val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    val values = ContentValues().apply {
+                                        put(MediaStore.Images.Media.DISPLAY_NAME, "railfan_${System.currentTimeMillis()}.jpg")
+                                        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                                        put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/RailFan Copilot")
+                                    }
+                                    context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                                } else {
+                                    val file = java.io.File(context.filesDir, "photos")
+                                        .apply { mkdirs() }
+                                        .let { java.io.File(it, "report_${System.currentTimeMillis()}.jpg") }
+                                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                }
+                                pendingPhotoUri = uri
+                                uri?.let { cameraLauncher.launch(it) }
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = RailBlue),
