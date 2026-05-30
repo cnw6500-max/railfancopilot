@@ -34,6 +34,11 @@ struct MoreView: View {
                                 subtitle: "Your private saved spots") {
                             AnyView(SavedLocationsView(vm: vm))
                         }
+                        MoreRow(icon: "video.fill", color: .red,
+                                title: "Railroad Webcams",
+                                subtitle: "Live cams at famous rail locations") {
+                            AnyView(WebcamsView())
+                        }
                         MoreRow(icon: "gear", color: .gray,
                                 title: "Settings",
                                 subtitle: "Display, notifications, about") {

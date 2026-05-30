@@ -1,11 +1,20 @@
 import SwiftUI
 import PhotosUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 struct PhotoView: View {
     @ObservedObject var vm: RailFanViewModel
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var selectedImage: UIImage? = nil
     @State private var showCamera = false
+
+    // Photo Enhancer
+    @State private var enhancerPhoto: PhotosPickerItem? = nil
+    @State private var enhancedImage: UIImage? = nil
+    @State private var showEnhancerPicker = false
+    @State private var isEnhancing = false
+    @State private var enhanceSaveSuccess = false
 
     var body: some View {
         NavigationView {
@@ -146,6 +155,77 @@ struct PhotoView: View {
 
 
 
+                        // ── Photo Enhancer ────────────────────────────────
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "wand.and.stars")
+                                    .foregroundColor(.purple)
+                                Text("Photo Enhancer")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.textPrimary)
+                            }
+                            Text("Railfan preset — boosts saturation, contrast, and warmth to make paint schemes pop.")
+                                .font(.system(size: 13))
+                                .foregroundColor(.textMuted)
+
+                            if let enhanced = enhancedImage {
+                                Image(uiImage: enhanced)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(height: 180)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                                HStack(spacing: 10) {
+                                    PhotosPicker(selection: $enhancerPhoto, matching: .images) {
+                                        Label("New Photo", systemImage: "photo")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundColor(.textSecondary)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background(Color.bgCard)
+                                            .cornerRadius(10)
+                                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
+                                    }
+                                    Button {
+                                        saveEnhancedPhoto(enhanced)
+                                    } label: {
+                                        Label(enhanceSaveSuccess ? "Saved!" : "Save to Photos",
+                                              systemImage: enhanceSaveSuccess ? "checkmark.circle.fill" : "square.and.arrow.down")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundColor(.white)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background(enhanceSaveSuccess ? Color.green : Color.railBlueMid)
+                                            .cornerRadius(10)
+                                    }
+                                }
+                            } else {
+                                PhotosPicker(selection: $enhancerPhoto, matching: .images) {
+                                    HStack {
+                                        if isEnhancing {
+                                            ProgressView().tint(.white).scaleEffect(0.8)
+                                            Text("Enhancing…")
+                                        } else {
+                                            Image(systemName: "photo.badge.plus")
+                                            Text("Select Photo to Enhance")
+                                        }
+                                    }
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.purple.opacity(0.8))
+                                    .cornerRadius(12)
+                                }
+                                .disabled(isEnhancing)
+                            }
+                        }
+                        .padding(16)
+                        .background(Color.bgCard)
+                        .cornerRadius(14)
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+                        .padding(.horizontal)
+
                         // Sun Angle Predictor
                         SunAngleCard(
                             elevation: vm.sunInfo.map { String(format: "%.1f°", $0.elevationDegrees) },
@@ -176,6 +256,24 @@ struct PhotoView: View {
                 }
             }
         }
+        .onChange(of: enhancerPhoto) { item in
+            guard let item else { return }
+            isEnhancing = true
+            enhancedImage = nil
+            enhanceSaveSuccess = false
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let img  = UIImage(data: data) {
+                    let result = applyRailfanEnhancement(img)
+                    await MainActor.run {
+                        enhancedImage = result
+                        isEnhancing   = false
+                    }
+                } else {
+                    await MainActor.run { isEnhancing = false }
+                }
+            }
+        }
         .sheet(isPresented: $showCamera) {
             CameraSheet { img in
                 selectedImage = img
@@ -190,6 +288,39 @@ struct PhotoView: View {
         guard let img = selectedImage,
               let jpeg = img.jpegData(compressionQuality: 0.7) else { return }
         vm.identifyLoco(jpegData: jpeg)
+    }
+
+    // ── Railfan Enhancement — matches Android preset exactly ─────────────────
+    private func applyRailfanEnhancement(_ input: UIImage) -> UIImage {
+        guard let ciImage = CIImage(image: input) else { return input }
+        let context = CIContext()
+
+        // 1. Saturation +35% and brightness lift
+        let colorControls = CIFilter.colorControls()
+        colorControls.inputImage  = ciImage
+        colorControls.saturation  = 1.35
+        colorControls.brightness  = 0.04   // ~+10/255
+        colorControls.contrast    = 1.15
+
+        // 2. Warmth — shift toward warm orange/red
+        guard let afterControls = colorControls.outputImage else { return input }
+        let tempTint = CIFilter.temperatureAndTint()
+        tempTint.inputImage = afterControls
+        tempTint.neutral    = CIVector(x: 6500, y: 0)   // warm target
+        tempTint.targetNeutral = CIVector(x: 7200, y: 0)
+
+        guard let output = tempTint.outputImage,
+              let cgImage = context.createCGImage(output, from: ciImage.extent) else { return input }
+
+        return UIImage(cgImage: cgImage, scale: input.scale, orientation: input.imageOrientation)
+    }
+
+    private func saveEnhancedPhoto(_ image: UIImage) {
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        withAnimation { enhanceSaveSuccess = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { enhanceSaveSuccess = false }
+        }
     }
 }
 
