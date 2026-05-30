@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct CommunityView: View {
     @ObservedObject var vm: RailFanViewModel
@@ -264,6 +265,8 @@ struct AddSightingView: View {
     private var effectiveReporterName: String { reporterName.isEmpty ? vm.userName : reporterName }
     @State private var isSubmitting = false
     @State private var errorMessage: String? = nil
+    @State private var selectedPhoto: PhotosPickerItem? = nil
+    @State private var photoData: Data? = nil
 
     private let railroads = ["BNSF", "UP", "CSX", "NS", "CN", "CP", "Amtrak", "Metra", "MBTA", "LIRR", "Metro-North", "SEPTA", "Caltrain", "Sound Transit", "Other"]
 
@@ -340,6 +343,36 @@ struct AddSightingView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
                         }
 
+                        // Photo attachment
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            HStack {
+                                Image(systemName: photoData == nil ? "photo.badge.plus" : "photo.fill.on.rectangle.fill")
+                                    .foregroundColor(.railBlue)
+                                Text(photoData == nil ? "Attach Photo (optional)" : "Photo attached ✓")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(photoData == nil ? .textSecondary : .railBlue)
+                                Spacer()
+                                if photoData != nil {
+                                    Button {
+                                        photoData = nil
+                                        selectedPhoto = nil
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.textMuted)
+                                    }
+                                }
+                            }
+                            .padding(14)
+                            .background(Color.bgCard)
+                            .cornerRadius(12)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.border, lineWidth: 0.5))
+                        }
+                        .onChange(of: selectedPhoto) { item in
+                            Task {
+                                photoData = try? await item?.loadTransferable(type: Data.self)
+                            }
+                        }
+
                         if let err = errorMessage {
                             Text(err).font(.system(size: 13)).foregroundColor(.orange)
                         }
@@ -399,7 +432,8 @@ struct AddSightingView: View {
                     notes: notes,
                     lat: lat,
                     lon: lon,
-                    reporterName: name
+                    reporterName: name,
+                    photoData: photoData
                 )
                 isPresented = false
             } catch {

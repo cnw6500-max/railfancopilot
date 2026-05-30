@@ -405,7 +405,11 @@ struct CameraSheet: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let img = info[.originalImage] as? UIImage { onCapture(img) }
+            if let img = info[.originalImage] as? UIImage {
+                // Save to camera roll so photo persists in gallery
+                UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+                onCapture(img)
+            }
             picker.dismiss(animated: true)
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
