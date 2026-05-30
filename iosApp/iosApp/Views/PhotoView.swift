@@ -155,6 +155,64 @@ struct PhotoView: View {
 
 
 
+                        // ── Consist Analyzer ──────────────────────────────
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .foregroundColor(.railBlue)
+                                Text("Consist Analyzer")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.textPrimary)
+                            }
+                            Text("Photograph a train consist to identify locomotive numbers, car types, and hazmat placards.")
+                                .font(.system(size: 13))
+                                .foregroundColor(.textMuted)
+
+                            if let result = vm.consistResult {
+                                Text(result)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.textSecondary)
+                                    .lineSpacing(5)
+                                    .padding(.top, 4)
+                            }
+
+                            if let err = vm.consistError {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text(err).font(.system(size: 13)).foregroundColor(.textSecondary)
+                                }
+                            }
+
+                            Button {
+                                if let img = selectedImage,
+                                   let jpeg = img.jpegData(compressionQuality: 0.7) {
+                                    vm.analyzeConsist(jpegData: jpeg)
+                                }
+                            } label: {
+                                HStack {
+                                    if vm.isAnalyzingConsist {
+                                        ProgressView().tint(.white).scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "list.bullet.rectangle")
+                                    }
+                                    Text(vm.isAnalyzingConsist ? "Analyzing…" : "Analyze Consist")
+                                        .font(.system(size: 14, weight: .medium))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(selectedImage == nil ? Color.railBlueDark : Color.railBlueMid)
+                                .cornerRadius(12)
+                            }
+                            .disabled(selectedImage == nil || vm.isAnalyzingConsist)
+                        }
+                        .padding(16)
+                        .background(Color.bgCard)
+                        .cornerRadius(14)
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+                        .padding(.horizontal)
+
                         // ── Photo Enhancer ────────────────────────────────
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {

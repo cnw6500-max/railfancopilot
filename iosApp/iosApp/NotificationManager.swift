@@ -53,6 +53,23 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
         UNUserNotificationCenter.current().add(request)
     }
 
+    func sendProximityNotification(locationName: String) {
+        let title = "📍 You're near \(locationName)"
+        let body  = "Great railfan spot — check the map for approaching trains!"
+        AlertStore.shared.add(title: title, body: body)
+        guard isAuthorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body  = body
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "proximity-\(locationName)-\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
     // Show notification even when app is in foreground
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,

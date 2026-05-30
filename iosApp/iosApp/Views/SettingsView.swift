@@ -77,9 +77,7 @@ struct SettingsView: View {
                         .tint(.railBlue)
                         .disabled(!vm.isPremium)
                         .onChange(of: vm.approachNotificationsEnabled) { enabled in
-                            if enabled {
-                                NotificationManager.shared.requestPermission()
-                            }
+                            if enabled { vm.enableApproachNotifications() }
                         }
 
                         if vm.approachNotificationsEnabled && vm.isPremium {

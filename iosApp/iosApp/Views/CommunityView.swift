@@ -84,7 +84,7 @@ struct CommunityView: View {
                             .padding(40)
                         } else {
                             ForEach(filteredSightings) { sighting in
-                                FirestoreSightingCard(sighting: sighting)
+                                FirestoreSightingCard(sighting: sighting, vm: vm)
                                     .padding(.horizontal)
                             }
                         }
@@ -133,113 +133,147 @@ struct CommunityView: View {
 // ── Firestore Sighting Card ───────────────────────────────────────────────────
 struct FirestoreSightingCard: View {
     let sighting: FirestoreSighting
+    let vm: RailFanViewModel
     @StateObject private var firestore = FirestoreManager.shared
+    @State private var showDetail = false
+    @State private var showDeleteConfirm = false
+
+    private var isOwner: Bool {
+        guard let uid = firestore.currentUserId,
+              let authorId = sighting.authorId else { return false }
+        return uid == authorId
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(sighting.railroad)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(railroadColor(sighting.railroad))
-                    .cornerRadius(6)
+        Button { showDetail = true } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(sighting.railroad)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(railroadColor(sighting.railroad))
+                        .cornerRadius(6)
 
-                Text(sighting.trainSymbol)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.textPrimary)
+                    Text(sighting.trainSymbol)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.textPrimary)
 
-                Spacer()
+                    Spacer()
 
-                Text("\(sighting.minutesAgo)m ago")
-                    .font(.system(size: 12))
-                    .foregroundColor(.textMuted)
-            }
+                    Text("\(sighting.minutesAgo)m ago")
+                        .font(.system(size: 12))
+                        .foregroundColor(.textMuted)
+                }
 
-            HStack(spacing: 4) {
-                Image(systemName: "mappin.circle.fill")
-                    .foregroundColor(.railBlue)
-                    .font(.system(size: 12))
-                Text(sighting.location)
-                    .font(.system(size: 13))
-                    .foregroundColor(.textSecondary)
-                Spacer()
-                Text(String(format: "%.0f mi", sighting.distanceMiles))
-                    .font(.system(size: 12))
-                    .foregroundColor(.textMuted)
-            }
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.circle.fill")
+                        .foregroundColor(.railBlue)
+                        .font(.system(size: 12))
+                    Text(sighting.location)
+                        .font(.system(size: 13))
+                        .foregroundColor(.textSecondary)
+                    Spacer()
+                    Text(String(format: "%.0f mi", sighting.distanceMiles))
+                        .font(.system(size: 12))
+                        .foregroundColor(.textMuted)
+                }
 
-            if !sighting.notes.isEmpty {
-                Text(sighting.notes)
-                    .font(.system(size: 13))
-                    .foregroundColor(.textSecondary)
-                    .lineLimit(2)
-            }
+                if !sighting.notes.isEmpty {
+                    Text(sighting.notes)
+                        .font(.system(size: 13))
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(2)
+                }
 
-            if let photoUrl = sighting.photoUrl, let url = URL(string: photoUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                            .frame(maxWidth: .infinity).frame(height: 160)
-                            .clipped().cornerRadius(8)
-                    case .failure:
-                        EmptyView()
-                    default:
-                        Color.bgCard.frame(height: 160).cornerRadius(8)
-                            .overlay(ProgressView())
+                if let photoUrl = sighting.photoUrl, let url = URL(string: photoUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                                .frame(maxWidth: .infinity).frame(height: 160)
+                                .clipped().cornerRadius(8)
+                        case .failure:
+                            EmptyView()
+                        default:
+                            Color.bgCard.frame(height: 160).cornerRadius(8)
+                                .overlay(ProgressView())
+                        }
                     }
                 }
-            }
 
-            HStack {
-                Image(systemName: "person.circle")
-                    .font(.system(size: 12))
-                    .foregroundColor(.textMuted)
-                Text(sighting.reporterName)
-                    .font(.system(size: 12))
-                    .foregroundColor(.textMuted)
-                Spacer()
+                HStack {
+                    Image(systemName: "person.circle")
+                        .font(.system(size: 12))
+                        .foregroundColor(.textMuted)
+                    Text(sighting.reporterName)
+                        .font(.system(size: 12))
+                        .foregroundColor(.textMuted)
+                    Spacer()
 
-                // Upvote button
-                Button {
-                    if let id = sighting.id {
-                        firestore.upvote(sightingId: id)
-                    }
-                } label: {
+                    // Comment count
                     HStack(spacing: 4) {
-                        Image(systemName: "hand.thumbsup")
-                            .font(.system(size: 12))
-                        Text("\(sighting.upvotes)")
+                        Image(systemName: "bubble.left").font(.system(size: 12))
+                        Text("\(sighting.commentCount)")
                             .font(.system(size: 12))
                     }
-                    .foregroundColor(.railBlue)
-                }
+                    .foregroundColor(.textMuted)
+                    .padding(.trailing, 6)
 
-                // Share button
-                Button {
-                    let text = "🚂 \(sighting.railroad) \(sighting.trainSymbol) spotted at \(sighting.location)! #RailfanCopilot"
-                    let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-                    UIApplication.shared.connectedScenes
-                        .compactMap { $0 as? UIWindowScene }
-                        .first?.windows.first?.rootViewController?
-                        .present(av, animated: true)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 12))
-                        Text("Share")
-                            .font(.system(size: 12))
+                    // Upvote
+                    Button {
+                        if let id = sighting.id { firestore.upvote(sightingId: id) }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "hand.thumbsup").font(.system(size: 12))
+                            Text("\(sighting.upvotes)").font(.system(size: 12))
+                        }
+                        .foregroundColor(.railBlue)
                     }
-                    .foregroundColor(.railBlue)
+                    .buttonStyle(.plain)
+
+                    // Share
+                    Button {
+                        let text = "🚂 \(sighting.railroad) \(sighting.trainSymbol) spotted at \(sighting.location)! #RailfanCopilot"
+                        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+                        UIApplication.shared.connectedScenes
+                            .compactMap { $0 as? UIWindowScene }
+                            .first?.windows.first?.rootViewController?
+                            .present(av, animated: true)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 12))
+                            .foregroundColor(.railBlue)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Delete (own sightings only)
+                    if isOwner {
+                        Button { showDeleteConfirm = true } label: {
+                            Image(systemName: "trash").font(.system(size: 12))
+                                .foregroundColor(.red.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
+            .padding(14)
+            .background(Color.bgCard)
+            .cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
         }
-        .padding(14)
-        .background(Color.bgCard)
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+        .buttonStyle(.plain)
+        .confirmationDialog("Delete this sighting?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let id = sighting.id {
+                    Task { try? await firestore.deleteSighting(sightingId: id) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showDetail) {
+            SightingDetailSheet(sighting: sighting, vm: vm)
+        }
     }
 
     private func railroadColor(_ name: String) -> Color {
@@ -251,6 +285,179 @@ struct FirestoreSightingCard: View {
         case "Amtrak": return Color(red: 0.12, green: 0.23, blue: 0.54)
         default:       return Color.railBlueMid
         }
+    }
+}
+
+// ── Sighting Detail Sheet (comments) ─────────────────────────────────────────
+struct SightingDetailSheet: View {
+    let sighting: FirestoreSighting
+    let vm: RailFanViewModel
+    @StateObject private var firestore = FirestoreManager.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var commentText = ""
+    @State private var isSubmitting = false
+
+    private var comments: [SightingComment] {
+        guard let id = sighting.id else { return [] }
+        return firestore.commentsBySighting[id] ?? []
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.bgPrimary.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+
+                            // Sighting header
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(sighting.railroad)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(Color.railBlueMid).cornerRadius(6)
+                                    Text(sighting.trainSymbol)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.textPrimary)
+                                    Spacer()
+                                    Text("\(sighting.minutesAgo)m ago")
+                                        .font(.system(size: 12)).foregroundColor(.textMuted)
+                                }
+                                HStack(spacing: 4) {
+                                    Image(systemName: "mappin.circle.fill")
+                                        .foregroundColor(.railBlue).font(.system(size: 13))
+                                    Text(sighting.location)
+                                        .font(.system(size: 14)).foregroundColor(.textSecondary)
+                                }
+                                if !sighting.notes.isEmpty {
+                                    Text(sighting.notes)
+                                        .font(.system(size: 14)).foregroundColor(.textSecondary)
+                                }
+                                if let url = sighting.photoUrl.flatMap(URL.init) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let img):
+                                            img.resizable().scaledToFill()
+                                                .frame(maxWidth: .infinity).frame(height: 180)
+                                                .clipped().cornerRadius(10)
+                                        default: EmptyView()
+                                        }
+                                    }
+                                }
+                                Text("By \(sighting.reporterName)")
+                                    .font(.system(size: 12)).foregroundColor(.textMuted)
+                            }
+                            .padding(14)
+                            .background(Color.bgCard)
+                            .cornerRadius(14)
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+
+                            // Comments section
+                            Text("Comments (\(comments.count))")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.textMuted)
+
+                            if comments.isEmpty {
+                                Text("No comments yet — be the first!")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.textMuted)
+                                    .padding(.vertical, 8)
+                            } else {
+                                ForEach(comments) { comment in
+                                    CommentRow(comment: comment)
+                                }
+                            }
+
+                            Spacer(minLength: 80)
+                        }
+                        .padding()
+                    }
+
+                    // Comment input bar
+                    HStack(spacing: 10) {
+                        TextField("Add a comment…", text: $commentText)
+                            .textFieldStyle(.plain)
+                            .foregroundColor(.textPrimary)
+                            .padding(10)
+                            .background(Color.bgCard)
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
+
+                        Button {
+                            submitComment()
+                        } label: {
+                            Image(systemName: isSubmitting ? "ellipsis" : "paperplane.fill")
+                                .foregroundColor(.white)
+                                .frame(width: 40, height: 40)
+                                .background(commentText.isEmpty ? Color.railBlueDark : Color.railBlueMid)
+                                .cornerRadius(10)
+                        }
+                        .disabled(commentText.trimmingCharacters(in: .whitespaces).isEmpty || isSubmitting)
+                    }
+                    .padding(12)
+                    .background(Color.bgPrimary)
+                }
+            }
+            .navigationTitle("Sighting")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.bgPrimary, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.foregroundColor(.railBlue)
+                }
+            }
+            .onAppear {
+                if let id = sighting.id { firestore.fetchComments(sightingId: id) }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func submitComment() {
+        let text = commentText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty, let id = sighting.id else { return }
+        isSubmitting = true
+        Task {
+            try? await firestore.addComment(
+                sightingId: id,
+                text: text,
+                authorName: vm.userName
+            )
+            commentText = ""
+            isSubmitting = false
+        }
+    }
+}
+
+struct CommentRow: View {
+    let comment: SightingComment
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.railBlueDark)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(comment.authorName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.textPrimary)
+                    Spacer()
+                    Text("\(comment.minutesAgo)m ago")
+                        .font(.system(size: 11))
+                        .foregroundColor(.textMuted)
+                }
+                Text(comment.text)
+                    .font(.system(size: 13))
+                    .foregroundColor(.textSecondary)
+            }
+        }
+        .padding(12)
+        .background(Color.bgCard)
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
     }
 }
 

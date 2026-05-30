@@ -31,6 +31,14 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isIdentifying = false
     @Published var locoIdError: String? = nil
 
+    // ── Consist Analyzer ─────────────────────────────────────────────────────
+    @Published var consistResult: String? = nil
+    @Published var isAnalyzingConsist = false
+    @Published var consistError: String? = nil
+
+    // ── Decoder History ───────────────────────────────────────────────────────
+    @Published var decoderHistory: [DecoderHistoryEntry] = []
+
     // ── Sun info ──────────────────────────────────────────────────────────────
     @Published var sunInfo: SunInfo? = nil
 
@@ -69,6 +77,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.startUpdatingLocation()
         radioChannels = helper.getAARFrequencies() as? [RadioChannel] ?? []
         loadSavedLocations()
+        loadDecoderHistory()
         isPremium = UserDefaults.standard.bool(forKey: "isPremium")
         Task {
             await FirestoreManager.shared.ensureAuth()
@@ -101,6 +110,19 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         if manager.authorizationStatus == .authorizedWhenInUse ||
            manager.authorizationStatus == .authorizedAlways {
             manager.startUpdatingLocation()
+        }
+        if manager.authorizationStatus == .authorizedAlways {
+            Task { @MainActor in self.refreshGeofences() }
+        }
+    }
+
+    // Geofence entry — fires when user physically enters a saved spot radius
+    nonisolated func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        Task { @MainActor in
+            guard approachNotificationsEnabled, isPremium else { return }
+            if let loc = savedLocations.first(where: { $0.id == region.identifier }) {
+                NotificationManager.shared.sendProximityNotification(locationName: loc.name)
+            }
         }
     }
 
@@ -152,6 +174,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 // Parse JSON into TrainSymbolDecodeResult via KMP helper
                 if let result = helper.parseDecodeResult(json: json) {
                     decoderResult = result
+                    saveToDecoderHistory(result)
                 } else {
                     decoderError = "Could not parse decode result"
                 }
@@ -174,6 +197,21 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 locoIdError = error.localizedDescription
             }
             isIdentifying = false
+        }
+    }
+
+    // ── Consist analyzer ─────────────────────────────────────────────────────
+    func analyzeConsist(jpegData: Data) {
+        isAnalyzingConsist = true
+        consistResult = nil
+        consistError  = nil
+        Task {
+            do {
+                consistResult = try await FirebaseFunctionsClient.shared.analyzeConsist(jpegData: jpegData)
+            } catch {
+                consistError = error.localizedDescription
+            }
+            isAnalyzingConsist = false
         }
     }
 
@@ -203,11 +241,41 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     func saveLocation(_ loc: SavedLocationShared) {
         savedLocations.append(loc)
         persistLocations()
+        refreshGeofences()
     }
 
     func deleteLocation(id: String) {
+        // Remove geofence before deleting
+        let region = locationManager.monitoredRegions.first { $0.identifier == id }
+        if let r = region { locationManager.stopMonitoring(for: r) }
         savedLocations.removeAll { $0.id == id }
         persistLocations()
+    }
+
+    // ── Geofence monitoring ───────────────────────────────────────────────────
+    func refreshGeofences() {
+        guard approachNotificationsEnabled, isPremium,
+              locationManager.authorizationStatus == .authorizedAlways else { return }
+        // Clear all existing railfan geofences
+        for region in locationManager.monitoredRegions {
+            locationManager.stopMonitoring(for: region)
+        }
+        // Register one per saved location (1-mile radius)
+        for loc in savedLocations {
+            let center = CLLocationCoordinate2D(latitude: loc.latitude, longitude: loc.longitude)
+            let region = CLCircularRegion(center: center, radius: 1609.34, identifier: loc.id)
+            region.notifyOnEntry = true
+            region.notifyOnExit  = false
+            locationManager.startMonitoring(for: region)
+        }
+    }
+
+    func enableApproachNotifications() {
+        // Escalate to Always authorization so geofences work in background
+        locationManager.requestAlwaysAuthorization()
+        NotificationManager.shared.requestPermission()
+        approachNotificationsEnabled = true
+        refreshGeofences()
     }
 
     private func persistLocations() {
@@ -255,6 +323,53 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     func unlockPremium() {
         isPremium = true
         UserDefaults.standard.set(true, forKey: "isPremium")
+    }
+
+    // ── Decoder history ───────────────────────────────────────────────────────
+    private func saveToDecoderHistory(_ result: TrainSymbolDecodeResult) {
+        let entry = DecoderHistoryEntry(
+            id: UUID().uuidString,
+            symbol: result.symbol,
+            origin: result.origin,
+            destination: result.destination,
+            railroad: result.railroad.displayName,
+            timestampMs: Date().timeIntervalSince1970 * 1000
+        )
+        decoderHistory.removeAll { $0.symbol == entry.symbol }   // deduplicate
+        decoderHistory.insert(entry, at: 0)
+        if decoderHistory.count > 20 { decoderHistory = Array(decoderHistory.prefix(20)) }
+        if let data = try? JSONEncoder().encode(decoderHistory) {
+            UserDefaults.standard.set(data, forKey: "decoderHistory")
+        }
+    }
+
+    private func loadDecoderHistory() {
+        if let data = UserDefaults.standard.data(forKey: "decoderHistory"),
+           let decoded = try? JSONDecoder().decode([DecoderHistoryEntry].self, from: data) {
+            decoderHistory = decoded
+        }
+    }
+
+    func clearDecoderHistory() {
+        decoderHistory = []
+        UserDefaults.standard.removeObject(forKey: "decoderHistory")
+    }
+}
+
+// ── Decoder history entry ─────────────────────────────────────────────────────
+struct DecoderHistoryEntry: Codable, Identifiable {
+    let id: String
+    let symbol: String
+    let origin: String
+    let destination: String
+    let railroad: String
+    let timestampMs: Double
+
+    var dateLabel: String {
+        let date = Date(timeIntervalSince1970: timestampMs / 1000)
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d, h:mm a"
+        return fmt.string(from: date)
     }
 }
 

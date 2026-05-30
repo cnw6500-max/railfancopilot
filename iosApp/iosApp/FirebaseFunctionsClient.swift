@@ -34,4 +34,16 @@ class FirebaseFunctionsClient {
         }
         return text
     }
+
+    func analyzeConsist(jpegData: Data) async throws -> String {
+        let b64 = jpegData.base64EncodedString()
+        let data: [String: Any] = ["base64Image": b64]
+        let result = try await functions.httpsCallable("analyzeConsist").call(data)
+        guard let map = result.data as? [String: Any],
+              let text = map["text"] as? String else {
+            throw NSError(domain: "FirebaseFunctionsClient", code: 0,
+                          userInfo: [NSLocalizedDescriptionKey: "Unexpected response from analyzeConsist"])
+        }
+        return text
+    }
 }

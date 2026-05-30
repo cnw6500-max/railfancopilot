@@ -13,9 +13,11 @@ struct FirestoreSighting: Identifiable, Codable {
     var latitude: Double
     var longitude: Double
     var reporterName: String
+    var authorId: String?          // Firebase Auth UID for delete ownership
     var timestampMs: Double
     var upvotes: Int
     var photoUrl: String?
+    var commentCount: Int = 0
 
     var minutesAgo: Int {
         let ms = Date().timeIntervalSince1970 * 1000 - timestampMs
@@ -27,7 +29,22 @@ struct FirestoreSighting: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, railroad, trainSymbol, location, notes
-        case latitude, longitude, reporterName, timestampMs, upvotes, photoUrl
+        case latitude, longitude, reporterName, authorId
+        case timestampMs, upvotes, photoUrl, commentCount
+    }
+}
+
+// ── Sighting comment model ────────────────────────────────────────────────────
+struct SightingComment: Identifiable, Codable {
+    @DocumentID var id: String?
+    var authorName: String
+    var authorId: String
+    var text: String
+    var timestampMs: Double
+
+    var minutesAgo: Int {
+        let ms = Date().timeIntervalSince1970 * 1000 - timestampMs
+        return max(0, Int(ms / 60000))
     }
 }
 
@@ -89,6 +106,9 @@ class FirestoreManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     private var sightingListener: ListenerRegistration?
+
+    // ── Comments ──────────────────────────────────────────────────────────────
+    @Published var commentsBySighting: [String: [SightingComment]] = [:]
 
     // ── Watchlist ─────────────────────────────────────────────────────────────
     @Published var watchlist: [WatchlistEntry] = []
@@ -169,6 +189,7 @@ class FirestoreManager: ObservableObject {
             railroad: railroad, trainSymbol: trainSymbol, location: location,
             notes: notes, latitude: lat, longitude: lon,
             reporterName: reporterName,
+            authorId: currentUserId,
             timestampMs: Date().timeIntervalSince1970 * 1000, upvotes: 0
         )
         sighting.photoUrl = photoUrl
@@ -178,6 +199,37 @@ class FirestoreManager: ObservableObject {
     func upvote(sightingId: String) {
         db.collection("sightings").document(sightingId)
             .updateData(["upvotes": FieldValue.increment(Int64(1))])
+    }
+
+    func deleteSighting(sightingId: String) async throws {
+        try await db.collection("sightings").document(sightingId).delete()
+    }
+
+    // ── Comments ──────────────────────────────────────────────────────────────
+    func fetchComments(sightingId: String) {
+        db.collection("sightings").document(sightingId)
+            .collection("comments")
+            .order(by: "timestampMs", descending: false)
+            .addSnapshotListener { [weak self] snapshot, _ in
+                guard let self, let docs = snapshot?.documents else { return }
+                let comments = docs.compactMap { try? $0.data(as: SightingComment.self) }
+                Task { @MainActor in
+                    self.commentsBySighting[sightingId] = comments
+                }
+            }
+    }
+
+    func addComment(sightingId: String, text: String, authorName: String) async throws {
+        guard let uid = currentUserId else { return }
+        let comment = SightingComment(
+            authorName: authorName, authorId: uid,
+            text: text, timestampMs: Date().timeIntervalSince1970 * 1000
+        )
+        let ref = db.collection("sightings").document(sightingId).collection("comments")
+        try ref.addDocument(from: comment)
+        // Increment comment count on parent (fire-and-forget)
+        try? await db.collection("sightings").document(sightingId)
+            .updateData(["commentCount": FieldValue.increment(Int64(1))])
     }
 
     // ── Watchlist ─────────────────────────────────────────────────────────────

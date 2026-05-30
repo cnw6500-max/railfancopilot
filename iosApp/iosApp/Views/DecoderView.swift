@@ -100,6 +100,59 @@ struct DecoderView: View {
                             }
                             .padding(24)
                         }
+
+                        // ── Decode history ─────────────────────────────────
+                        if !vm.decoderHistory.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("Recent Decodes")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.textMuted)
+                                    Spacer()
+                                    Button("Clear") { vm.clearDecoderHistory() }
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.textMuted)
+                                }
+                                .padding(.horizontal)
+
+                                ForEach(vm.decoderHistory) { entry in
+                                    Button {
+                                        symbolInput = entry.symbol
+                                        decodeIfNeeded()
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: "clock.arrow.circlepath")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(.railBlue)
+                                                .frame(width: 28)
+
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(entry.symbol)
+                                                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                                    .foregroundColor(.textPrimary)
+                                                Text("\(entry.origin) → \(entry.destination)")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.textSecondary)
+                                                    .lineLimit(1)
+                                            }
+
+                                            Spacer()
+
+                                            Text(entry.dateLabel)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.textMuted)
+                                        }
+                                        .padding(12)
+                                        .background(Color.bgCard)
+                                        .cornerRadius(10)
+                                        .overlay(RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.border, lineWidth: 0.5))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal)
+                                }
+                            }
+                        }
                     }
                     .padding(.vertical)
                 }
