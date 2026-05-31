@@ -74,6 +74,12 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     var showSubmitDialog by remember { mutableStateOf(false) }
     var showProGate by remember { mutableStateOf(false) }
 
+    // Tick every 60 s so "5 min ago" labels stay fresh while the screen is open
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(60_000L); nowMs = System.currentTimeMillis() }
+    }
+
     if (showProGate) {
         ProGateScreen(
             featureName = "Community Reports",
@@ -145,6 +151,7 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             ReportCard(
                 report      = report,
                 userLocation = userLocation,
+                nowMs       = nowMs,
                 onDelete    = { vm.deleteReport(it.id) },
                 onGetCommentsFlow = { vm.getCommentsFlow(it) },
                 onPostComment     = { id, text -> vm.postComment(id, text) }
@@ -219,6 +226,7 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
 fun ReportCard(
     report: CommunityReport,
     userLocation: Location?,
+    nowMs: Long = System.currentTimeMillis(),
     onDelete: ((CommunityReport) -> Unit)? = null,
     onGetCommentsFlow: ((String) -> kotlinx.coroutines.flow.Flow<List<SightingComment>>)? = null,
     onPostComment: ((String, String) -> Unit)? = null
@@ -232,8 +240,8 @@ fun ReportCard(
             emptyList()
         }
     }
-    val ago = remember(report.timestampMs) {
-        val diff = System.currentTimeMillis() - report.timestampMs
+    val ago = remember(report.timestampMs, nowMs) {
+        val diff = nowMs - report.timestampMs
         when {
             diff < TimeUnit.MINUTES.toMillis(60) -> "${TimeUnit.MILLISECONDS.toMinutes(diff)}m ago"
             diff < TimeUnit.HOURS.toMillis(24) -> "${TimeUnit.MILLISECONDS.toHours(diff)}h ago"

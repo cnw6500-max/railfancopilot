@@ -109,7 +109,8 @@ object FirestoreCommunityRepo {
                                 timestampMs     = tsMs,
                                 upvotes         = upvotes,
                                 isVerified      = false,
-                                localPhotoPath  = photoUrl
+                                localPhotoPath  = photoUrl,
+                                locationName    = location.ifBlank { "" }
                             )
                         }
                     } catch (e: Exception) {
@@ -159,7 +160,8 @@ object FirestoreCommunityRepo {
                             latitude = lat, longitude = lon, text = text,
                             trainSymbol = trainSymbol.ifBlank { null }, railroad = railroad,
                             tags = "[]", timestampMs = tsMs, upvotes = upvotes,
-                            isVerified = false, localPhotoPath = doc.getString("photoUrl")
+                            isVerified = false, localPhotoPath = doc.getString("photoUrl"),
+                            locationName = location.ifBlank { "" }
                         )
                     } catch (_: Exception) { null }
                 } ?: emptyList()

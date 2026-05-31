@@ -69,6 +69,7 @@ fun MapScreen(vm: RailFanViewModel) {
     val trains by vm.filteredTrains.collectAsState()
     val trainTrails by vm.trainTrails.collectAsState()
     val features by vm.mapFeatures.collectAsState()
+    val communityReports by vm.communityReports.collectAsState()
     val selectedRailroad by vm.selectedRailroad.collectAsState()
     val isLoading by vm.isLoadingTrains.collectAsState()
     val userLocation by vm.userLocation.collectAsState()
@@ -88,9 +89,12 @@ fun MapScreen(vm: RailFanViewModel) {
     // Store the selected train by ID so the detail sheet always reflects live data after a refresh
     var selectedTrainId by remember { mutableStateOf<String?>(null) }
     val selectedTrain by remember { derivedStateOf { trains.find { it.id == selectedTrainId } } }
+    var selectedSightingId by remember { mutableStateOf<String?>(null) }
+    val selectedSighting by remember { derivedStateOf { communityReports.find { it.id == selectedSightingId } } }
     var showSatellite by remember { mutableStateOf(false) }
     var showRailwayMap by remember { mutableStateOf(railOverlayDefault) }
     var showRailLines by remember { mutableStateOf(false) }
+    var showSightings by remember { mutableStateOf(true) }
     var tappedSegmentName by remember { mutableStateOf<String?>(null) }
     var hasAnimatedToUser by remember { mutableStateOf(false) }
 
@@ -224,7 +228,11 @@ fun MapScreen(vm: RailFanViewModel) {
                         icon = icon,
                         title = train.symbol,
                         snippet = "${train.speedMph} mph · ${train.origin} → ${train.destination}",
-                        onClick = { selectedTrainId = train.id; false }
+                        onClick = {
+                            selectedTrainId = train.id
+                            selectedSightingId = null   // close any open sighting sheet
+                            false
+                        }
                     )
                 }
                 features.forEach { feature ->
@@ -234,6 +242,34 @@ fun MapScreen(vm: RailFanViewModel) {
                         snippet = feature.description
                     )
                 }
+
+                // Community sighting markers — cyan pins
+                if (showSightings) {
+                    communityReports.forEach { report ->
+                        if (report.latitude != 0.0 && report.longitude != 0.0) {
+                            Marker(
+                                state = MarkerState(LatLng(report.latitude, report.longitude)),
+                                icon = com.google.android.gms.maps.model.BitmapDescriptorFactory
+                                    .defaultMarker(com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_CYAN),
+                                title = buildString {
+                                    if (!report.railroad.isNullOrBlank()) append(report.railroad)
+                                    if (!report.trainSymbol.isNullOrBlank()) {
+                                        if (isNotEmpty()) append(" · ")
+                                        append(report.trainSymbol)
+                                    }
+                                    if (isEmpty()) append("Sighting")
+                                },
+                                snippet = "${report.userName} · ${timeAgoLabel(report.timestampMs, nowMs)}",
+                                onClick = {
+                                    selectedSightingId = report.id
+                                    selectedTrainId = null   // close any open train sheet
+                                    false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 // Search-result pin
                 searchPinLatLng?.let { pin ->
                     Marker(
@@ -382,10 +418,14 @@ fun MapScreen(vm: RailFanViewModel) {
                 Spacer(Modifier.height(4.dp))
 
                 // Map layer chips
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     FilterChip("Satellite", showSatellite) { showSatellite = !showSatellite }
                     FilterChip("Rail Map", showRailwayMap) { showRailwayMap = !showRailwayMap }
                     FilterChip("Rail Lines", showRailLines) { showRailLines = !showRailLines }
+                    FilterChip("Sightings", showSightings) { showSightings = !showSightings }
                 }
             }
         }
@@ -454,7 +494,10 @@ fun MapScreen(vm: RailFanViewModel) {
                     val locLabel = "%.4f°, %.4f°".format(loc.latitude, loc.longitude)
                     item { SectionHeader("Live trains (${trains.size}) · $locLabel") }
                     items(trains) { train ->
-                        TrainCard(train) { selectedTrainId = train.id }
+                        TrainCard(train) {
+                            selectedTrainId = train.id
+                            selectedSightingId = null   // close any open sighting sheet
+                        }
                     }
                 }
             }
@@ -464,6 +507,10 @@ fun MapScreen(vm: RailFanViewModel) {
 
     selectedTrain?.let { train ->
         TrainDetailSheet(train, vm) { selectedTrainId = null }
+    }
+
+    selectedSighting?.let { report ->
+        SightingDetailSheet(report, nowMs) { selectedSightingId = null }
     }
 }
 
@@ -828,4 +875,129 @@ fun DetailRow(label: String, value: String) {
         Text(value, color = TextPrimary, fontSize = 13.sp)
     }
     HorizontalDivider(color = Border.copy(alpha = 0.5f), thickness = 0.5.dp)
+}
+
+// ── Time-ago helper ───────────────────────────────────────────────────────────
+
+private fun timeAgoLabel(timestampMs: Long, nowMs: Long): String {
+    val diffMin = ((nowMs - timestampMs) / 60_000L).toInt().coerceAtLeast(0)
+    return when {
+        diffMin < 1    -> "just now"
+        diffMin < 60   -> "$diffMin min ago"
+        diffMin < 1440 -> "${diffMin / 60}h ago"
+        else           -> "${diffMin / 1440}d ago"
+    }
+}
+
+// ── Community sighting detail sheet ──────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SightingDetailSheet(
+    report: com.railfancopilot.app.data.models.CommunityReport,
+    nowMs: Long,
+    onDismiss: () -> Unit
+) {
+    val isRemotePhoto = report.localPhotoPath?.startsWith("https://") == true
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = BgCard,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // ── Header ────────────────────────────────────────────────────────
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0D2E1A)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Group, null,
+                        tint = Color(0xFF34D399),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        buildString {
+                            if (!report.railroad.isNullOrBlank()) append(report.railroad)
+                            if (!report.trainSymbol.isNullOrBlank()) {
+                                if (isNotEmpty()) append(" · ")
+                                append(report.trainSymbol)
+                            }
+                            if (isEmpty()) append("Community Sighting")
+                        },
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${report.userName} · ${timeAgoLabel(report.timestampMs, nowMs)}",
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.Close, null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // ── Location name ─────────────────────────────────────────────────
+            if (report.locationName.isNotBlank()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Default.Place, null,
+                        tint = TextMuted, modifier = Modifier.size(14.dp))
+                    Text(report.locationName, color = TextMuted, fontSize = 12.sp)
+                }
+            }
+
+            // ── Sighting note ─────────────────────────────────────────────────
+            if (report.text.isNotBlank()) {
+                Text(report.text, color = TextSecondary, fontSize = 13.sp, lineHeight = 20.sp)
+            }
+
+            // ── Photo ─────────────────────────────────────────────────────────
+            if (isRemotePhoto) {
+                coil.compose.AsyncImage(
+                    model = report.localPhotoPath,
+                    contentDescription = "Sighting photo",
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(0.5.dp, BorderLight, RoundedCornerShape(10.dp))
+                )
+            }
+
+            // ── Coordinates ───────────────────────────────────────────────────
+            Text(
+                "%.5f°, %.5f°".format(report.latitude, report.longitude),
+                color = TextMuted.copy(alpha = 0.6f),
+                fontSize = 10.sp
+            )
+        }
+    }
 }

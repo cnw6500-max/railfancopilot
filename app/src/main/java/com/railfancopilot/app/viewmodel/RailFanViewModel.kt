@@ -642,6 +642,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private var locoIdJob: kotlinx.coroutines.Job? = null
 
     fun identifyLocomotive(base64Image: String, thumbnailPath: String? = null) {
+        locoIdJob?.cancel()   // cancel any in-flight request before starting a new one
         locoIdJob = viewModelScope.launch {
             _isIdentifying.value = true
             _locoIdError.value = null
