@@ -36,21 +36,9 @@ import com.railfancopilot.app.data.models.TrainSymbolDecodeResult
 import com.railfancopilot.app.ui.components.*
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
-import com.railfancopilot.app.ui.components.ProGateScreen
 
 @Composable
 fun DecoderScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
-    val isPro by vm.isProUser.collectAsState()
-
-    if (!isPro) {
-        ProGateScreen(
-            featureName = "AI Symbol Decoder",
-            description = "Decode any train symbol instantly using Claude AI — origin, destination, schedule, and typical consist.",
-            onUpgrade = onUpgrade
-        )
-        return
-    }
-
     val result by vm.decodeResult.collectAsState()
     val isDecoding by vm.isDecoding.collectAsState()
     val error by vm.decodeError.collectAsState()
