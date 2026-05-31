@@ -89,6 +89,9 @@ object FirestoreSpotsRepo {
             photoUrls.add(url)
         }
 
+        // Use SetOptions.merge() so that upvotes are not reset if the document
+        // already exists (e.g. duplicate submission or edit). Upvotes are managed
+        // exclusively via FieldValue.increment in upvoteSpot().
         docRef.set(hashMapOf(
             "name"             to spot.name,
             "latitude"         to spot.latitude,
@@ -109,9 +112,14 @@ object FirestoreSpotsRepo {
             "hasRestrooms"     to spot.hasRestrooms,
             "hasFood"          to spot.hasFood,
             "hasShade"         to spot.hasShade,
-            "upvotes"          to 0L,
             "photoUrls"        to photoUrls
-        )).await()
+        ), com.google.firebase.firestore.SetOptions.merge()).await()
+
+        // Only initialise upvotes on first write (field absent → set to 0)
+        val snap = docRef.get().await()
+        if (!snap.contains("upvotes")) {
+            docRef.update("upvotes", 0L).await()
+        }
 
         return spot.id
     }

@@ -42,22 +42,22 @@ private val ONBOARDING_PAGES = listOf(
         body = "Follow Amtrak and commuter rail trains in real time on an interactive map. Get proximity alerts when trains approach your saved locations."
     ),
     OnboardingPage(
-        icon = Icons.Default.SmartToy,
-        accentColor = Color(0xFF8B5CF6),
-        title = "AI-Powered Tools",
-        body = "Decode any train symbol instantly and identify locomotive models by photo — powered by Claude AI. Results are saved to your history automatically."
+        icon = Icons.Default.Group,
+        accentColor = Color(0xFFF59E0B),
+        title = "Community Sightings",
+        body = "Log train sightings and see what other railfans spotted nearby — with photos, consist details, and real-time updates across Android and iOS."
     ),
     OnboardingPage(
-        icon = Icons.Default.CameraAlt,
-        accentColor = Color(0xFFF59E0B),
-        title = "Photography & Community",
-        body = "Tag photos with live train metadata, predict golden hour lighting, file sighting reports, and browse what other railfans spotted nearby."
+        icon = Icons.Default.SmartToy,
+        accentColor = Color(0xFF8B5CF6),
+        title = "Try the AI Decoder — Free",
+        body = "Type any train symbol and get an instant AI breakdown of origin, destination, schedule, and typical consist. No subscription needed."
     )
 )
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun OnboardingOverlay(onFinish: () -> Unit) {
+fun OnboardingOverlay(onFinish: () -> Unit, onTryDecoder: () -> Unit = onFinish) {
     var page by remember { mutableIntStateOf(0) }
     val pagerState = rememberPagerState(initialPage = 0) { ONBOARDING_PAGES.size }
 
@@ -175,9 +175,9 @@ fun OnboardingOverlay(onFinish: () -> Unit) {
                 }
             }
 
-            // Next / Get Started button
+            // Next / CTA button
             Button(
-                onClick = { if (isLast) onFinish() else page++ },
+                onClick = { if (isLast) onTryDecoder() else page++ },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -185,11 +185,18 @@ fun OnboardingOverlay(onFinish: () -> Unit) {
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
             ) {
                 Text(
-                    if (isLast) "Get Started" else "Next",
+                    if (isLast) "Try the Decoder Now" else "Next",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color.White
                 )
+            }
+
+            // Skip to app on non-last pages
+            if (isLast) {
+                TextButton(onClick = onFinish) {
+                    Text("Skip to app", color = Color(0xFF6B7280), fontSize = 13.sp)
+                }
             }
         }
     }

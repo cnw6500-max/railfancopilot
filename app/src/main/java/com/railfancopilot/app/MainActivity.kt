@@ -56,7 +56,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 }
 
 private val bottomNavItems = listOf(
-    Screen.Map, Screen.Community, Screen.Alerts, Screen.Watchlist, Screen.More
+    Screen.Map, Screen.Decoder, Screen.Community, Screen.Alerts, Screen.More
 )
 
 class MainActivity : ComponentActivity() {
@@ -217,7 +217,13 @@ fun RailFanApp() {
         // Show onboarding on first launch only; null = DataStore still loading (don't flash)
         if (onboardingShown == false) {
             OnboardingOverlay(
-                onFinish = { vm.markOnboardingShown() }
+                onFinish = { vm.markOnboardingShown() },
+                onTryDecoder = {
+                    vm.markOnboardingShown()
+                    navController.navigate(Screen.Decoder.route) {
+                        launchSingleTop = true
+                    }
+                }
             )
         }
 

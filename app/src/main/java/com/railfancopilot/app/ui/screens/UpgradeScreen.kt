@@ -35,12 +35,19 @@ private fun Context.findActivity(): Activity? {
 
 private data class ProFeature(val icon: ImageVector, val title: String, val subtitle: String)
 
+private val FREE_FEATURES = listOf(
+    ProFeature(Icons.Default.SmartToy,            "AI Symbol Decoder",          "Decode any train symbol — origin, destination, consist. Always free."),
+    ProFeature(Icons.Default.Map,                 "Live Train Map",             "Real-time Amtrak and commuter rail positions. Always free."),
+    ProFeature(Icons.Default.Group,               "Community Feed",             "Browse sightings from railfans near you. Always free."),
+)
+
 private val PRO_FEATURES = listOf(
-    ProFeature(Icons.Default.SmartToy,            "AI Loco Identifier",         "Identify any locomotive from a photo using Claude AI"),
-    ProFeature(Icons.Default.CameraAlt,           "Photo Tagging",              "Tag photos with GPS, train symbol, and locomotive data"),
-    ProFeature(Icons.Default.Group,               "Community Reports",          "Submit train sightings and contribute to the community feed"),
+    ProFeature(Icons.Default.CameraAlt,           "AI Loco Identifier",         "Identify any locomotive from a photo using Claude AI"),
+    ProFeature(Icons.Default.PhotoCamera,         "Photo Tagging & Enhancer",   "Tag photos with GPS + train data, enhance with railfan preset"),
+    ProFeature(Icons.Default.Group,               "Submit Sightings",           "Post to the community feed with photo attachments"),
     ProFeature(Icons.Default.Bookmark,            "Unlimited Saved Locations",  "Save as many railfan spots as you want — free tier: 3"),
     ProFeature(Icons.Default.NotificationsActive, "Approach Notifications",     "Get alerted when a train is approaching your location"),
+    ProFeature(Icons.Default.Train,               "Consist Analyzer",           "AI identifies every unit in a consist front-to-back"),
 )
 
 @Composable
@@ -68,14 +75,51 @@ fun UpgradeScreen(vm: RailFanViewModel, onBack: () -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Unlock the full experience — one-time purchase",
+                    "One-time purchase — unlock everything forever",
                     color = TextMuted,
                     fontSize = 13.sp
                 )
             }
         }
 
+        // Free tier
         item {
+            Text("Always Free", color = RailBlue, fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(BgCard)
+                    .border(0.5.dp, BorderLight, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                FREE_FEATURES.forEachIndexed { index, feature ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Icon(feature.icon, contentDescription = feature.title,
+                            tint = RailBlue, modifier = Modifier.size(22.dp))
+                        Column {
+                            Text(feature.title, color = TextPrimary, fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium)
+                            Text(feature.subtitle, color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                    if (index < FREE_FEATURES.lastIndex)
+                        HorizontalDivider(color = Border.copy(alpha = 0.4f), thickness = 0.5.dp)
+                }
+            }
+        }
+
+        // Pro tier
+        item {
+            Text("Pro Features", color = RailAmber, fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp, top = 4.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -90,15 +134,16 @@ fun UpgradeScreen(vm: RailFanViewModel, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Icon(feature.icon, contentDescription = feature.title, tint = RailBlue, modifier = Modifier.size(22.dp))
+                        Icon(feature.icon, contentDescription = feature.title,
+                            tint = RailAmber, modifier = Modifier.size(22.dp))
                         Column {
-                            Text(feature.title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(feature.title, color = TextPrimary, fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium)
                             Text(feature.subtitle, color = TextMuted, fontSize = 12.sp)
                         }
                     }
-                    if (index < PRO_FEATURES.lastIndex) {
+                    if (index < PRO_FEATURES.lastIndex)
                         HorizontalDivider(color = Border.copy(alpha = 0.4f), thickness = 0.5.dp)
-                    }
                 }
             }
         }

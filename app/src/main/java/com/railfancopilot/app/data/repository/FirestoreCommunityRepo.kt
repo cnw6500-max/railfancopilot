@@ -109,7 +109,8 @@ object FirestoreCommunityRepo {
                                 timestampMs     = tsMs,
                                 upvotes         = upvotes,
                                 isVerified      = false,
-                                localPhotoPath  = photoUrl
+                                localPhotoPath  = photoUrl,
+                                locationName    = location.ifBlank { "" }
                             )
                         }
                     } catch (e: Exception) {
@@ -159,7 +160,8 @@ object FirestoreCommunityRepo {
                             latitude = lat, longitude = lon, text = text,
                             trainSymbol = trainSymbol.ifBlank { null }, railroad = railroad,
                             tags = "[]", timestampMs = tsMs, upvotes = upvotes,
-                            isVerified = false, localPhotoPath = doc.getString("photoUrl")
+                            isVerified = false, localPhotoPath = doc.getString("photoUrl"),
+                            locationName = location.ifBlank { "" }
                         )
                     } catch (_: Exception) { null }
                 } ?: emptyList()
@@ -188,7 +190,10 @@ object FirestoreCommunityRepo {
                 if (file.exists()) {
                     val ref = FirebaseStorage.getInstance().reference
                         .child("sightings/${UUID.randomUUID()}/photo.jpg")
-                    ref.putFile(Uri.fromFile(file)).await()
+                    val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                        .setContentType("image/jpeg")
+                        .build()
+                    ref.putFile(Uri.fromFile(file), metadata).await()
                     ref.downloadUrl.await().toString()
                 } else null
             } catch (e: Exception) {
@@ -310,12 +315,13 @@ object FirestoreCommunityRepo {
 
     // ── Delete a sighting ─────────────────────────────────────────────────────
 
-    fun deleteSighting(sightingId: String) {
-        db.collection(COLLECTION).document(sightingId).delete()
-            .addOnFailureListener { e ->
-                if (com.railfancopilot.app.BuildConfig.DEBUG)
-                    android.util.Log.e("FirestoreRepo", "deleteSighting failed: ${e.message}", e)
-            }
+    suspend fun deleteSighting(sightingId: String) {
+        try {
+            db.collection(COLLECTION).document(sightingId).delete().await()
+        } catch (e: Exception) {
+            if (com.railfancopilot.app.BuildConfig.DEBUG)
+                android.util.Log.e("FirestoreRepo", "deleteSighting failed: ${e.message}", e)
+        }
     }
 
     // ── Anonymous auth + FCM token registration ───────────────────────────────
@@ -332,7 +338,7 @@ object FirestoreCommunityRepo {
             db.collection("users").document(uid).set(
                 hashMapOf("fcmToken" to token),
                 com.google.firebase.firestore.SetOptions.merge()
-            )
+            ).await()
         } catch (_: Exception) { }
         return uid
     }

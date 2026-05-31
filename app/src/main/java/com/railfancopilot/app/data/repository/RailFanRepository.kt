@@ -298,7 +298,7 @@ class RailFanRepository(private val context: Context) {
     fun getAllReportsFlow(): Flow<List<CommunityReport>> =
         FirestoreCommunityRepo.getAllSightingsFlow()
 
-    fun deleteCommunityReport(reportId: String) =
+    suspend fun deleteCommunityReport(reportId: String) =
         FirestoreCommunityRepo.deleteSighting(reportId)
 
     suspend fun addReport(

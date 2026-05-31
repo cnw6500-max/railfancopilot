@@ -60,6 +60,7 @@ private val PREF_ALERT_HOT_TRAIN   = booleanPreferencesKey("alert_hot_train")
 private val PREF_ALERT_HIGH_SPEED  = booleanPreferencesKey("alert_high_speed")
 private val PREF_ALERT_SCANNER     = booleanPreferencesKey("alert_scanner")
 private val PREF_ALERT_APPROACHING = booleanPreferencesKey("alert_approaching")
+private val PREF_ALERT_HERITAGE    = booleanPreferencesKey("alert_heritage")
 
 private val EARNED_IDS_KEY = stringSetPreferencesKey("earned_ids")
 private val VISITED_YARDS_KEY = stringSetPreferencesKey("visited_yards")
@@ -177,6 +178,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _alertHighSpeed.value        = prefs[PREF_ALERT_HIGH_SPEED]           ?: true
             _alertScanner.value          = prefs[PREF_ALERT_SCANNER]              ?: true
             _alertApproaching.value      = prefs[PREF_ALERT_APPROACHING]          ?: true
+            _alertHeritage.value         = prefs[PREF_ALERT_HERITAGE]             ?: true
         }
     }
 
@@ -375,8 +377,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private var autoRefreshJob: kotlinx.coroutines.Job? = null
+
     fun startAutoRefresh() {
-        viewModelScope.launch {
+        if (autoRefreshJob?.isActive == true) return   // already running — don't launch a second loop
+        autoRefreshJob = viewModelScope.launch {
             // Block until the first real GPS fix — never refresh with hardcoded coordinates
             _userLocation.first { it != null }
             while (true) {
@@ -637,6 +642,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private var locoIdJob: kotlinx.coroutines.Job? = null
 
     fun identifyLocomotive(base64Image: String, thumbnailPath: String? = null) {
+        locoIdJob?.cancel()   // cancel any in-flight request before starting a new one
         locoIdJob = viewModelScope.launch {
             _isIdentifying.value = true
             _locoIdError.value = null
@@ -769,7 +775,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
 
     fun deleteReport(reportId: String) {
-        repo.deleteCommunityReport(reportId)
+        viewModelScope.launch { repo.deleteCommunityReport(reportId) }
     }
 
     fun getCommentsFlow(sightingId: String) =
@@ -838,11 +844,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     fun setAlertHighSpeed(on: Boolean)  { _alertHighSpeed.value = on;  viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HIGH_SPEED]  = on } } }
     fun setAlertScanner(on: Boolean)    { _alertScanner.value = on;    viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_SCANNER]     = on } } }
     fun setAlertApproaching(on: Boolean){ _alertApproaching.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_APPROACHING] = on } } }
-    fun setAlertHeritage(on: Boolean)   { _alertHeritage.value = on }
+    fun setAlertHeritage(on: Boolean)   { _alertHeritage.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HERITAGE] = on } } }
 
     // Tracks which Firestore alert IDs have already been merged so we don't
     // re-fire the in-app banner on every snapshot refresh.
-    private val seenFirestoreAlertIds = mutableSetOf<String>()
+    private val seenFirestoreAlertIds = Collections.synchronizedSet(mutableSetOf<String>())
 
     fun markAlertRead(id: String) {
         _railAlerts.value = _railAlerts.value.map { if (it.id == id) it.copy(isRead = true) else it }
@@ -853,7 +859,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     fun clearAlerts() { _railAlerts.value = emptyList() }
 
     private val RAILFAN_ALERTS_CHANNEL = "railfan_alerts"
-    private val seenReportIds = mutableSetOf<String>()
+    private val seenReportIds = Collections.synchronizedSet(mutableSetOf<String>())
     private var alertsSeeded  = false
 
     /** Start listening to Firestore rail_alerts — call once after auth is ready. */
@@ -1348,7 +1354,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     // ── Railway map lines (Overpass) ───────────────────────────────────────────
     private val _railwaySegments = MutableStateFlow<List<com.railfancopilot.app.data.models.RailwaySegment>>(emptyList())
     val railwaySegments: StateFlow<List<com.railfancopilot.app.data.models.RailwaySegment>> = _railwaySegments.asStateFlow()
-    private var isFetchingRailLines = false
+    @Volatile private var isFetchingRailLines = false
 
     fun fetchRailwaySegments(south: Double, west: Double, north: Double, east: Double) {
         if (isFetchingRailLines) return

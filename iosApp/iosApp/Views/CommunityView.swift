@@ -476,6 +476,10 @@ struct AddSightingView: View {
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var photoData: Data? = nil
 
+    // Photo
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var selectedImage: UIImage? = nil
+
     private let railroads = ["BNSF", "UP", "CSX", "NS", "CN", "CP", "Amtrak", "Metra", "MBTA", "LIRR", "Metro-North", "SEPTA", "Caltrain", "Sound Transit", "Other"]
 
     var body: some View {
@@ -630,6 +634,9 @@ struct AddSightingView: View {
         let lat = vm.userLocation?.latitude ?? 0.0
         let lon = vm.userLocation?.longitude ?? 0.0
         let name = effectiveReporterName
+        let photoData = selectedImage.flatMap {
+            $0.jpegData(compressionQuality: 0.8)
+        }
 
         Task {
             do {
