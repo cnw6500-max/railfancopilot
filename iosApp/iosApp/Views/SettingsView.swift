@@ -121,11 +121,23 @@ struct SettingsView: View {
                             UpgradeView(vm: vm)
                         } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: "star.fill")
-                                    .foregroundColor(.yellow)
-                                Text(vm.isPremium ? "Premium Active" : "Upgrade to Premium")
-                                    .foregroundColor(.textPrimary)
-                                    .font(.system(size: 15, weight: .medium))
+                                Image(systemName: vm.isPurchased ? "star.fill" : vm.isInTrial ? "timer" : "star.fill")
+                                    .foregroundColor(vm.isPurchased ? .yellow : vm.isInTrial ? .green : .yellow)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(vm.isPurchased ? "Premium Active"
+                                         : vm.isInTrial ? "Free Trial Active"
+                                         : "Upgrade to Premium")
+                                        .foregroundColor(.textPrimary)
+                                        .font(.system(size: 15, weight: .medium))
+                                    if vm.isInTrial && !vm.isPurchased {
+                                        Text(vm.trialDaysLeft > 1
+                                             ? "\(vm.trialDaysLeft) days remaining"
+                                             : vm.trialDaysLeft == 1 ? "Last day"
+                                             : "Expires today")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.textMuted)
+                                    }
+                                }
                             }
                         }
                     }

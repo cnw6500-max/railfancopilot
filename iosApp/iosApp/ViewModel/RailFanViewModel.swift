@@ -41,7 +41,12 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var showAmtrak    = true
     @Published var showCommuter  = true
     @Published var showFreight   = true
-    @Published var isPremium     = false
+    @Published var isPurchased   = false
+    @Published var isInTrial     = false
+    @Published var trialDaysLeft = 0
+
+    /// Pro features are active while purchased or within the 7-day trial window.
+    var isPremium: Bool { isPurchased || isInTrial }
 
     // ── Community ─────────────────────────────────────────────────────────────
     @Published var userName: String = UserDefaults.standard.string(forKey: "userName") ?? "Railfan" {
@@ -69,7 +74,8 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.startUpdatingLocation()
         radioChannels = helper.getAARFrequencies() as? [RadioChannel] ?? []
         loadSavedLocations()
-        isPremium = UserDefaults.standard.bool(forKey: "isPremium")
+        isPurchased = UserDefaults.standard.bool(forKey: "isPremium")
+        seedTrialIfNeeded()
         Task { await FirestoreManager.shared.ensureAuth() }
     }
 
@@ -239,8 +245,24 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // ── Premium ───────────────────────────────────────────────────────────────
     func unlockPremium() {
-        isPremium = true
+        isPurchased = true
         UserDefaults.standard.set(true, forKey: "isPremium")
+    }
+
+    private func seedTrialIfNeeded() {
+        let trialDurationMs: Double = 7 * 24 * 60 * 60 * 1000
+        let savedStart = UserDefaults.standard.double(forKey: "trialStartMs")
+        let startMs: Double
+        if savedStart == 0 {
+            startMs = Date().timeIntervalSince1970 * 1000
+            UserDefaults.standard.set(startMs, forKey: "trialStartMs")
+        } else {
+            startMs = savedStart
+        }
+        let elapsedMs = Date().timeIntervalSince1970 * 1000 - startMs
+        isInTrial = elapsedMs < trialDurationMs
+        let remainingMs = max(0, trialDurationMs - elapsedMs)
+        trialDaysLeft = Int(ceil(remainingMs / (24 * 60 * 60 * 1000)))
     }
 }
 
