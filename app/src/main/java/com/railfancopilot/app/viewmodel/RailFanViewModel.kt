@@ -97,7 +97,10 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     // ── Pro / billing ─────────────────────────────────────────────────────────
 
     private val proRepository = ProRepository(application, viewModelScope)
-    val isProUser: StateFlow<Boolean> = proRepository.isProUser
+    val isProUser: StateFlow<Boolean>    = proRepository.isProUser
+    val isPurchased: StateFlow<Boolean>  = proRepository.isPurchased
+    val isInTrial: StateFlow<Boolean>    = proRepository.isInTrial
+    val trialDaysLeft: StateFlow<Int>    = proRepository.trialDaysLeft
 
     fun purchasePro(activity: android.app.Activity) = proRepository.purchasePro(activity)
     fun restorePurchases() = proRepository.restorePurchases()

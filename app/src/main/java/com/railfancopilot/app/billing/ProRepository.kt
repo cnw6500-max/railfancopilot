@@ -6,17 +6,19 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.android.billingclient.api.*
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
 
 private val Context.proDataStore: DataStore<Preferences> by preferencesDataStore(name = "pro_status")
-private val PREF_IS_PRO = booleanPreferencesKey("is_pro")
+private val PREF_IS_PRO       = booleanPreferencesKey("is_pro")
+private val PREF_TRIAL_START  = longPreferencesKey("trial_start_ms")
+
+private const val TRIAL_DURATION_MS = 7L * 24 * 60 * 60 * 1000L
 
 const val PRO_PRODUCT_ID = "railfan_copilot_pro"
 
@@ -27,8 +29,28 @@ class ProRepository(
 
     private val dataStore = context.proDataStore
 
-    private val _isProUser = MutableStateFlow(false)
-    val isProUser: StateFlow<Boolean> = _isProUser.asStateFlow()
+    private val _isPurchased  = MutableStateFlow(false)
+    private val _trialStartMs = MutableStateFlow(Long.MAX_VALUE)
+
+    /** True only when the user has paid — used for purchase-specific UI. */
+    val isPurchased: StateFlow<Boolean> = _isPurchased.asStateFlow()
+
+    /** True while the 7-day trial window is open. */
+    val isInTrial: StateFlow<Boolean> = _trialStartMs.map { start ->
+        start != Long.MAX_VALUE && System.currentTimeMillis() - start < TRIAL_DURATION_MS
+    }.stateIn(scope, SharingStarted.Eagerly, false)
+
+    /** Remaining full days in the trial (rounded up), 0 when expired or not started. */
+    val trialDaysLeft: StateFlow<Int> = _trialStartMs.map { start ->
+        if (start == Long.MAX_VALUE) return@map 0
+        val remaining = (TRIAL_DURATION_MS - (System.currentTimeMillis() - start)).coerceAtLeast(0L)
+        ceil(remaining.toDouble() / (24 * 60 * 60 * 1000.0)).toInt()
+    }.stateIn(scope, SharingStarted.Eagerly, 0)
+
+    /** Pro features are unlocked while purchased or within the trial window. */
+    val isProUser: StateFlow<Boolean> = combine(_isPurchased, isInTrial) { purchased, trial ->
+        purchased || trial
+    }.stateIn(scope, SharingStarted.Eagerly, false)
 
     private val billingClient: BillingClient = BillingClient.newBuilder(context)
         .setListener(this)
@@ -38,9 +60,21 @@ class ProRepository(
         .build()
 
     init {
-        // Load cached pro status immediately so UI doesn't flash locked state on restart
         scope.launch {
-            dataStore.data.first()[PREF_IS_PRO]?.let { _isProUser.value = it }
+            val prefs = dataStore.data.first()
+
+            // Restore cached purchase status immediately — avoids locked UI flash on restart
+            _isPurchased.value = prefs[PREF_IS_PRO] ?: false
+
+            // Seed trial on first launch; restore on subsequent launches
+            val savedStart = prefs[PREF_TRIAL_START]
+            if (savedStart == null) {
+                val now = System.currentTimeMillis()
+                dataStore.edit { it[PREF_TRIAL_START] = now }
+                _trialStartMs.value = now
+            } else {
+                _trialStartMs.value = savedStart
+            }
         }
         connectBilling()
     }
@@ -125,7 +159,7 @@ class ProRepository(
     }
 
     private suspend fun setPro(pro: Boolean) {
-        _isProUser.value = pro
+        _isPurchased.value = pro
         dataStore.edit { it[PREF_IS_PRO] = pro }
     }
 }

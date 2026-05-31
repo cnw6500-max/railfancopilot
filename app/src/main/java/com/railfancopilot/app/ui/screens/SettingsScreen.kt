@@ -55,7 +55,10 @@ private val FAQ = listOf(
 @Composable
 fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val context = LocalContext.current
-    val isPro by vm.isProUser.collectAsState()
+    val isPro         by vm.isProUser.collectAsState()
+    val isPurchased   by vm.isPurchased.collectAsState()
+    val isInTrial     by vm.isInTrial.collectAsState()
+    val trialDaysLeft by vm.trialDaysLeft.collectAsState()
     val refreshIntervalSec by vm.refreshIntervalSec.collectAsState()
     val trainRadiusMiles   by vm.trainRadiusMiles.collectAsState()
     val approachEtaMin     by vm.approachEtaMin.collectAsState()
@@ -87,48 +90,85 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
 
         item {
             SettingsCard {
-                if (isPro) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Star, null, tint = RailAmber, modifier = Modifier.size(20.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Railfan Copilot Pro", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("All Pro features unlocked", color = TextMuted, fontSize = 12.sp)
+                when {
+                    isPurchased -> {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Star, null, tint = RailAmber, modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Railfan Copilot Pro", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("All Pro features unlocked", color = TextMuted, fontSize = 12.sp)
+                            }
+                            Icon(Icons.Default.CheckCircle, null, tint = RailGreen, modifier = Modifier.size(18.dp))
                         }
-                        Icon(Icons.Default.CheckCircle, null, tint = RailGreen, modifier = Modifier.size(18.dp))
                     }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onUpgrade() }
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Star, null, tint = RailAmber, modifier = Modifier.size(20.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Upgrade to Pro — \$2.99", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("Loco ID, Photo Tagging, Community, unlimited spots", color = TextMuted, fontSize = 12.sp)
+                    isInTrial -> {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Timer, null, tint = RailGreen, modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Free trial active", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    if (trialDaysLeft > 1) "$trialDaysLeft days remaining"
+                                    else if (trialDaysLeft == 1) "Last day — expires tomorrow"
+                                    else "Expires today",
+                                    color = TextMuted, fontSize = 12.sp
+                                )
+                            }
                         }
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                        SettingsDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onUpgrade() }
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Star, null, tint = RailAmber, modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Unlock Pro permanently — \$2.99", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Keep all features after your trial ends", color = TextMuted, fontSize = 12.sp)
+                            }
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                        }
                     }
-                    SettingsDivider()
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { vm.restorePurchases() }
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Restore, null, tint = TextMuted, modifier = Modifier.size(20.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Restore purchases", color = TextSecondary, fontSize = 14.sp)
-                            Text("Already purchased on another device?", color = TextMuted, fontSize = 12.sp)
+                    else -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onUpgrade() }
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Star, null, tint = RailAmber, modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Upgrade to Pro — \$2.99", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Loco ID, Photo Tagging, Community, unlimited spots", color = TextMuted, fontSize = 12.sp)
+                            }
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                        }
+                        SettingsDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { vm.restorePurchases() }
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Restore, null, tint = TextMuted, modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Restore purchases", color = TextSecondary, fontSize = 14.sp)
+                                Text("Already purchased on another device?", color = TextMuted, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
