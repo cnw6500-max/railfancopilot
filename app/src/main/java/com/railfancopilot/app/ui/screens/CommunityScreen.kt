@@ -473,8 +473,8 @@ fun ReportCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(comment.userName, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                            val commentAgo = remember(comment.timestampMs) {
-                                val diff = System.currentTimeMillis() - comment.timestampMs
+                            val commentAgo = remember(comment.timestampMs, nowMs) {
+                                val diff = nowMs - comment.timestampMs
                                 when {
                                     diff < TimeUnit.MINUTES.toMillis(60) -> "${TimeUnit.MILLISECONDS.toMinutes(diff)}m"
                                     diff < TimeUnit.HOURS.toMillis(24)   -> "${TimeUnit.MILLISECONDS.toHours(diff)}h"

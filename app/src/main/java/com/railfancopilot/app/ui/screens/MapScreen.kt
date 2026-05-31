@@ -28,8 +28,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -230,7 +232,7 @@ fun MapScreen(vm: RailFanViewModel) {
                         snippet = "${train.speedMph} mph · ${train.origin} → ${train.destination}",
                         onClick = {
                             selectedTrainId = train.id
-                            selectedSightingId = null   // close any open sighting sheet
+                            selectedSightingId = null
                             false
                         }
                     )
@@ -244,25 +246,21 @@ fun MapScreen(vm: RailFanViewModel) {
                 }
 
                 // Community sighting markers — cyan pins
+                val cyanIcon = remember {
+                    com.google.android.gms.maps.model.BitmapDescriptorFactory
+                        .defaultMarker(com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_CYAN)
+                }
                 if (showSightings) {
                     communityReports.forEach { report ->
                         if (report.latitude != 0.0 && report.longitude != 0.0) {
                             Marker(
                                 state = MarkerState(LatLng(report.latitude, report.longitude)),
-                                icon = com.google.android.gms.maps.model.BitmapDescriptorFactory
-                                    .defaultMarker(com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_CYAN),
-                                title = buildString {
-                                    if (!report.railroad.isNullOrBlank()) append(report.railroad)
-                                    if (!report.trainSymbol.isNullOrBlank()) {
-                                        if (isNotEmpty()) append(" · ")
-                                        append(report.trainSymbol)
-                                    }
-                                    if (isEmpty()) append("Sighting")
-                                },
+                                icon = cyanIcon,
+                                title = sightingTitle(report.railroad, report.trainSymbol),
                                 snippet = "${report.userName} · ${timeAgoLabel(report.timestampMs, nowMs)}",
                                 onClick = {
                                     selectedSightingId = report.id
-                                    selectedTrainId = null   // close any open train sheet
+                                    selectedTrainId = null
                                     false
                                 }
                             )
@@ -496,7 +494,7 @@ fun MapScreen(vm: RailFanViewModel) {
                     items(trains) { train ->
                         TrainCard(train) {
                             selectedTrainId = train.id
-                            selectedSightingId = null   // close any open sighting sheet
+                            selectedSightingId = null
                         }
                     }
                 }
@@ -877,9 +875,9 @@ fun DetailRow(label: String, value: String) {
     HorizontalDivider(color = Border.copy(alpha = 0.5f), thickness = 0.5.dp)
 }
 
-// ── Time-ago helper ───────────────────────────────────────────────────────────
+// ── Shared time-ago helper (used by map markers and sighting sheet) ───────────
 
-private fun timeAgoLabel(timestampMs: Long, nowMs: Long): String {
+internal fun timeAgoLabel(timestampMs: Long, nowMs: Long): String {
     val diffMin = ((nowMs - timestampMs) / 60_000L).toInt().coerceAtLeast(0)
     return when {
         diffMin < 1    -> "just now"
@@ -887,6 +885,21 @@ private fun timeAgoLabel(timestampMs: Long, nowMs: Long): String {
         diffMin < 1440 -> "${diffMin / 60}h ago"
         else           -> "${diffMin / 1440}d ago"
     }
+}
+
+// ── Sighting title builder (used by map markers and sighting sheet) ───────────
+
+internal fun sightingTitle(
+    railroad: String?,
+    trainSymbol: String?,
+    fallback: String = "Sighting"
+): String = buildString {
+    if (!railroad.isNullOrBlank()) append(railroad)
+    if (!trainSymbol.isNullOrBlank()) {
+        if (isNotEmpty()) append(" · ")
+        append(trainSymbol)
+    }
+    if (isEmpty()) append(fallback)
 }
 
 // ── Community sighting detail sheet ──────────────────────────────────────────
@@ -921,30 +934,23 @@ fun SightingDetailSheet(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF0D2E1A)),
+                        .background(StatusBgGreen),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Default.Group, null,
-                        tint = Color(0xFF34D399),
+                        tint = RailGreen,
                         modifier = Modifier.size(26.dp)
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        buildString {
-                            if (!report.railroad.isNullOrBlank()) append(report.railroad)
-                            if (!report.trainSymbol.isNullOrBlank()) {
-                                if (isNotEmpty()) append(" · ")
-                                append(report.trainSymbol)
-                            }
-                            if (isEmpty()) append("Community Sighting")
-                        },
+                        sightingTitle(report.railroad, report.trainSymbol, "Community Sighting"),
                         color = TextPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         "${report.userName} · ${timeAgoLabel(report.timestampMs, nowMs)}",
