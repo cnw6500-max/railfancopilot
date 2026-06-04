@@ -7,7 +7,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -25,8 +27,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.railfancopilot.app.data.models.LocomotiveEntry
 import com.railfancopilot.app.ui.components.*
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 
@@ -107,7 +107,7 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
 
         // Railroad filter chips
         if (rosterRailroads.isNotEmpty()) {
-            androidx.compose.foundation.lazy.LazyRow(
+            LazyRow(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {

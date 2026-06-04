@@ -583,5 +583,8 @@ struct StationDepartureSwift: Identifiable {
 }
 
 private extension Optional where Wrapped == String {
-    var nilIfEmpty: String? { self?.nilIfEmpty }
+    var nilIfEmpty: String? {
+        guard let s = self, !s.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return s
+    }
 }
