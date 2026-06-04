@@ -338,7 +338,7 @@ object FirestoreCommunityRepo {
             db.collection("users").document(uid).set(
                 hashMapOf("fcmToken" to token),
                 com.google.firebase.firestore.SetOptions.merge()
-            ).await()
+            )  // fire-and-forget — don't block auth on token registration
         } catch (_: Exception) { }
         return uid
     }

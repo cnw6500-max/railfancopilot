@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.railfancopilot.app.data.models.LocomotiveEntry
 import com.railfancopilot.app.ui.components.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
@@ -61,14 +62,22 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
     val locos by vm.locomotives.collectAsState()
     val isLoadingLocos by vm.isLoadingLocos.collectAsState()
     val context = LocalContext.current
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedLoco by remember { mutableStateOf<LocomotiveEntry?>(null) }
+    var searchQuery    by remember { mutableStateOf("") }
+    var selectedLoco   by remember { mutableStateOf<LocomotiveEntry?>(null) }
+    var rrFilter       by remember { mutableStateOf<com.railfancopilot.app.data.models.Railroad?>(null) }
 
-    val filtered = locos.filter {
-        searchQuery.isBlank() ||
-        it.model.contains(searchQuery, ignoreCase = true) ||
-        it.manufacturer.contains(searchQuery, ignoreCase = true) ||
-        it.railroads.any { rr -> rr.displayName.contains(searchQuery, ignoreCase = true) }
+    // Collect all railroads that appear in the roster for the filter row
+    val rosterRailroads = remember(locos) {
+        locos.flatMap { it.railroads }.distinct().sortedBy { it.displayName }
+    }
+
+    val filtered = locos.filter { loco ->
+        val matchesSearch = searchQuery.isBlank() ||
+            loco.model.contains(searchQuery, ignoreCase = true) ||
+            loco.manufacturer.contains(searchQuery, ignoreCase = true) ||
+            loco.railroads.any { rr -> rr.displayName.contains(searchQuery, ignoreCase = true) }
+        val matchesRr = rrFilter == null || loco.railroads.contains(rrFilter)
+        matchesSearch && matchesRr
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -95,6 +104,23 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
             shape = RoundedCornerShape(10.dp),
             singleLine = true
         )
+
+        // Railroad filter chips
+        if (rosterRailroads.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                item {
+                    FilterChip("All", rrFilter == null) { rrFilter = null }
+                }
+                items(rosterRailroads) { rr ->
+                    FilterChip(rr.displayName.take(8), rrFilter == rr) {
+                        rrFilter = if (rrFilter == rr) null else rr
+                    }
+                }
+            }
+        }
 
         LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
             item { SectionHeader("Locomotive Roster (${filtered.size})") }

@@ -18,6 +18,12 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.play.core.review.ReviewManagerFactory
+import com.google.android.play.core.review.testing.FakeReviewManager
 import com.railfancopilot.app.ui.screens.AlertsScreen
 import com.railfancopilot.app.ui.screens.RailAlertBanner
 import androidx.compose.ui.Alignment
@@ -49,6 +55,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Encyclopedia    : Screen("encyclopedia",    "Roster",    Icons.Default.Book)
     object SavedLocations  : Screen("saved_locations", "Saved",     Icons.Default.Bookmark)
     object Spots           : Screen("spots",           "Spots",     Icons.Default.Place)
+    object Trips           : Screen("trips",           "Trips",     Icons.Default.DirectionsRailway)
     object Webcams         : Screen("webcams",         "Webcams",   Icons.Default.Videocam)
     object Settings        : Screen("settings",        "Settings",  Icons.Default.Settings)
     object Upgrade         : Screen("upgrade",         "Upgrade",   Icons.Default.Star)
@@ -81,6 +88,65 @@ class MainActivity : ComponentActivity() {
 fun RailFanApp() {
     val navController = rememberNavController()
     val vm: RailFanViewModel = viewModel()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // ── Play In-App Review ────────────────────────────────────────────────────
+    // FakeReviewManager shows an immediate test dialog in debug builds.
+    // On a real device/release build, ReviewManagerFactory shows the real Play sheet
+    // only when Google's quota allows it (typically 2–3 times per year per user).
+    val reviewManager = remember {
+        if (com.railfancopilot.app.BuildConfig.DEBUG) FakeReviewManager(context)
+        else ReviewManagerFactory.create(context)
+    }
+
+    // Collect review requests from the ViewModel and launch the Play review flow
+    val shouldReview by vm.requestInAppReview.collectAsState()
+    LaunchedEffect(shouldReview) {
+        if (!shouldReview) return@LaunchedEffect
+        try {
+            val reviewInfoTask = reviewManager.requestReviewFlow()
+            reviewInfoTask.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val activity = context as? android.app.Activity
+                    if (activity != null) {
+                        reviewManager.launchReviewFlow(activity, task.result)
+                    }
+                }
+                // Always consume the request so we don't loop, regardless of success
+                vm.consumeInAppReviewRequest()
+            }
+        } catch (_: Exception) {
+            vm.consumeInAppReviewRequest()
+        }
+    }
+
+    // Trial-end observer: fire review prompt exactly once when trial expires.
+    // seenNonZero guards against the StateFlow's initial default value of 0
+    // (which would otherwise fire the prompt on every cold start before DataStore loads).
+    val trialDaysLeft by vm.trialDaysLeft.collectAsState()
+    val isPro by vm.isProUser.collectAsState()
+    var seenNonZeroTrialDays by remember { mutableStateOf(false) }
+    LaunchedEffect(trialDaysLeft) {
+        if (trialDaysLeft > 0) {
+            seenNonZeroTrialDays = true
+        } else if (seenNonZeroTrialDays && !isPro) {
+            // trialDaysLeft just transitioned from >0 to 0 → trial genuinely expired
+            vm.maybeRequestReviewTrialEnd()
+        }
+    }
+
+    // Exit-to-background observer: fire review prompt when app goes to background
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                vm.maybeRequestReviewOnExit()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val permissions = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -206,6 +272,7 @@ fun RailFanApp() {
                 composable(Screen.Encyclopedia.route)    { EncyclopediaScreen(vm) }
                 composable(Screen.SavedLocations.route) { SavedLocationsScreen(vm, onUpgrade) }
                 composable(Screen.Spots.route)          { SpotsScreen(vm, onUpgrade) }
+                composable(Screen.Trips.route)          { TripsScreen(vm) }
                 composable(Screen.Webcams.route)        { WebcamsScreen() }
                 composable(Screen.Settings.route)       { SettingsScreen(vm, onUpgrade) }
                 composable(Screen.Upgrade.route)        {

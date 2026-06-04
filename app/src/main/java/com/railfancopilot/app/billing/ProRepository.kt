@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.android.billingclient.api.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
@@ -35,14 +36,19 @@ class ProRepository(
     /** True only when the user has paid — used for purchase-specific UI. */
     val isPurchased: StateFlow<Boolean> = _isPurchased.asStateFlow()
 
+    // Ticks every minute so trial state stays current during a long session.
+    private val ticker: Flow<Unit> = flow {
+        while (true) { emit(Unit); delay(60_000L) }
+    }.shareIn(scope, SharingStarted.Eagerly)
+
     /** True while the 7-day trial window is open. */
-    val isInTrial: StateFlow<Boolean> = _trialStartMs.map { start ->
+    val isInTrial: StateFlow<Boolean> = combine(_trialStartMs, ticker) { start, _ ->
         start != Long.MAX_VALUE && System.currentTimeMillis() - start < TRIAL_DURATION_MS
     }.stateIn(scope, SharingStarted.Eagerly, false)
 
     /** Remaining full days in the trial (rounded up), 0 when expired or not started. */
-    val trialDaysLeft: StateFlow<Int> = _trialStartMs.map { start ->
-        if (start == Long.MAX_VALUE) return@map 0
+    val trialDaysLeft: StateFlow<Int> = combine(_trialStartMs, ticker) { start, _ ->
+        if (start == Long.MAX_VALUE) return@combine 0
         val remaining = (TRIAL_DURATION_MS - (System.currentTimeMillis() - start)).coerceAtLeast(0L)
         ceil(remaining.toDouble() / (24 * 60 * 60 * 1000.0)).toInt()
     }.stateIn(scope, SharingStarted.Eagerly, 0)

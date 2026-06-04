@@ -99,6 +99,34 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Color.bgCard)
 
+                    // Golden Hour
+                    Section(header: Text("Photography").foregroundColor(.textMuted)) {
+                        Toggle(isOn: Binding(
+                            get: { vm.goldenHourAlertsEnabled },
+                            set: { vm.setGoldenHourAlerts($0) }
+                        )) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "sun.horizon.fill")
+                                    .foregroundColor(.yellow).frame(width: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Golden Hour Alerts").foregroundColor(.textPrimary)
+                                    Text("Notify at sunrise & sunset")
+                                        .font(.system(size: 11)).foregroundColor(.textMuted)
+                                }
+                            }
+                        }.tint(.railBlue)
+                    }
+                    .listRowBackground(Color.bgCard)
+
+                    // Commuter feeds
+                    Section(header: Text("Commuter Rail Feeds").foregroundColor(.textMuted)) {
+                        ToggleRow(label: "NJ Transit",  icon: "tram.fill", value: Binding(get: { vm.njtEnabled },       set: { vm.setNjt($0) }))
+                        ToggleRow(label: "VRE",         icon: "tram.fill", value: Binding(get: { vm.vreEnabled },       set: { vm.setVre($0) }))
+                        ToggleRow(label: "MARC",        icon: "tram.fill", value: Binding(get: { vm.marcEnabled },      set: { vm.setMarc($0) }))
+                        ToggleRow(label: "Metrolink",   icon: "tram.fill", value: Binding(get: { vm.metrolinkEnabled }, set: { vm.setMetrolink($0) }))
+                    }
+                    .listRowBackground(Color.bgCard)
+
                     // Achievements
                     Section {
                         NavigationLink {

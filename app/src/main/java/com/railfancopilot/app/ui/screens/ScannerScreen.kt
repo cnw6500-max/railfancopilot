@@ -43,6 +43,135 @@ data class RRFeed(
     val lon: Double? = null
 )
 
+// ── Live Railcam data ─────────────────────────────────────────────────────────
+
+data class RailCamFeed(
+    val name: String,       // e.g. "Rochelle, IL — Diamond"
+    val location: String,   // city, state
+    val railroads: String,  // e.g. "BNSF / UP"
+    /** YouTube watch URL or channel search URL */
+    val youtubeUrl: String,
+    val isMembersOnly: Boolean = false,
+    val lat: Double,
+    val lon: Double
+)
+
+/**
+ * Curated list of Virtual Railfan live-stream cameras on YouTube.
+ * Video IDs marked [confirmed] were verified live at time of coding; permanent
+ * VRF streams keep the same ID indefinitely.  Others link to a VRF channel
+ * search so the feature degrades gracefully if a stream is ever re-keyed.
+ */
+val railCamFeeds: List<RailCamFeed> = listOf(
+    // ── Confirmed permanent stream IDs ────────────────────────────────────────
+    RailCamFeed(
+        name        = "Rochelle, IL — Diamond",
+        location    = "Rochelle, IL",
+        railroads   = "BNSF / UP",
+        youtubeUrl  = "https://www.youtube.com/watch?v=LhNpn9L5ndM",  // [confirmed]
+        lat         = 41.9231, lon = -89.0676
+    ),
+    RailCamFeed(
+        name        = "Kearney, NE — Platte Valley",
+        location    = "Kearney, NE",
+        railroads   = "BNSF",
+        youtubeUrl  = "https://www.youtube.com/watch?v=23tmCNeFh7A",  // [confirmed]
+        lat         = 40.6993, lon = -99.0817
+    ),
+    RailCamFeed(
+        name        = "Flagstaff, AZ — Transcon",
+        location    = "Flagstaff, AZ",
+        railroads   = "BNSF",
+        youtubeUrl  = "https://www.youtube.com/watch?v=7xdHH9KMSVk",  // [confirmed]
+        lat         = 35.1983, lon = -111.6513
+    ),
+    RailCamFeed(
+        name        = "Tucson, AZ — Sunset Route",
+        location    = "Tucson, AZ",
+        railroads   = "UP",
+        youtubeUrl  = "https://www.youtube.com/watch?v=-Q9VQJdqIlk",  // [confirmed]
+        lat         = 32.2226, lon = -110.9747
+    ),
+    RailCamFeed(
+        name        = "Folkston, GA — Funnel",
+        location    = "Folkston, GA",
+        railroads   = "CSX",
+        youtubeUrl  = "https://www.youtube.com/watch?v=xKUkjFJkKgc",  // [confirmed]
+        lat         = 30.8357, lon = -82.0077
+    ),
+    // ── Channel-search links (stream ID not pinned) ───────────────────────────
+    RailCamFeed(
+        name        = "Barstow, CA — Transcon",
+        location    = "Barstow, CA",
+        railroads   = "BNSF / UP",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Barstow",
+        lat         = 34.8958, lon = -117.0228
+    ),
+    RailCamFeed(
+        name        = "Cajon Pass, CA",
+        location    = "San Bernardino, CA",
+        railroads   = "BNSF / UP",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Cajon",
+        lat         = 34.3617, lon = -117.4592
+    ),
+    RailCamFeed(
+        name        = "Altoona, PA — Horseshoe Curve",
+        location    = "Altoona, PA",
+        railroads   = "NS",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Altoona",
+        lat         = 40.5120, lon = -78.4050
+    ),
+    RailCamFeed(
+        name        = "Chattanooga, TN",
+        location    = "Chattanooga, TN",
+        railroads   = "NS / CSX",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Chattanooga",
+        lat         = 35.0456, lon = -85.3097
+    ),
+    RailCamFeed(
+        name        = "Laramie, WY — Sherman Hill",
+        location    = "Laramie, WY",
+        railroads   = "UP",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Laramie",
+        lat         = 41.3114, lon = -105.5911
+    ),
+    RailCamFeed(
+        name        = "Helper, UT — Soldier Summit",
+        location    = "Helper, UT",
+        railroads   = "UP",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Helper",
+        lat         = 39.6849, lon = -110.8560
+    ),
+    RailCamFeed(
+        name        = "Marias Pass, MT",
+        location    = "Essex, MT",
+        railroads   = "BNSF",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Marias",
+        lat         = 48.3258, lon = -113.5847
+    ),
+    RailCamFeed(
+        name        = "Waycross, GA — Rice Yard",
+        location    = "Waycross, GA",
+        railroads   = "CSX",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Waycross",
+        lat         = 31.2138, lon = -82.3579
+    ),
+    RailCamFeed(
+        name        = "Dunsmuir, CA — Shasta Route",
+        location    = "Dunsmuir, CA",
+        railroads   = "UP",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/search?query=Dunsmuir",
+        lat         = 41.2007, lon = -122.2727
+    ),
+    RailCamFeed(
+        name        = "Browse all cameras →",
+        location    = "Virtual Railfan",
+        railroads   = "All railroads",
+        youtubeUrl  = "https://www.youtube.com/@VirtualRailfan/streams",
+        lat         = 0.0, lon = 0.0   // sentinel — sorted to bottom
+    ),
+)
+
 val railroadRadioFeeds = listOf(
     RRFeed("CSX Baltimore MD",        "Baltimore, MD",    "CSX",         "http://www.railroadradio.net/content/view/199/241/", Color(0xFF1A6B3C), 39.29,  -76.61),
     RRFeed("CSX | NS Elkhorn City KY","Elkhorn City, KY", "CSX/NS",      "http://www.railroadradio.net/content/view/278/322/", Color(0xFF1A6B3C), 37.30,  -82.35),
@@ -67,6 +196,7 @@ fun ScannerScreen(vm: RailFanViewModel) {
     val trains              by vm.trains.collectAsState()
     val context             = LocalContext.current
 
+    val favoriteFeedUrls   by vm.favoriteFeedUrls.collectAsState()
     var selectedTab        by remember { mutableStateOf(0) }
     var freqRailroadFilter by remember { mutableStateOf<String?>(null) }
     var showLogSheet       by remember { mutableStateOf(false) }
@@ -88,6 +218,25 @@ fun ScannerScreen(vm: RailFanViewModel) {
         })
     }
 
+    // Favorites first, then distance-sorted rest, "Browse all" always last
+    val displayFeeds = remember(sortedFeeds, favoriteFeedUrls) {
+        val pinned    = sortedFeeds.filter { it.lat != null && it.url in favoriteFeedUrls }
+        val unpinned  = sortedFeeds.filter { it.lat != null && it.url !in favoriteFeedUrls }
+        val browseAll = sortedFeeds.filter { it.lat == null }
+        pinned + unpinned + browseAll
+    }
+    val nearestFeedUrl = remember(sortedFeeds) { sortedFeeds.firstOrNull { it.lat != null }?.url }
+
+    val sortedCams = remember(userLocation) {
+        val loc = userLocation
+        val buf = FloatArray(1)
+        railCamFeeds.sortedWith(compareBy { cam ->
+            if (cam.lat == 0.0 && cam.lon == 0.0) Double.MAX_VALUE  // "Browse all" sentinel → bottom
+            else if (loc == null) 0.0
+            else { Location.distanceBetween(loc.latitude, loc.longitude, cam.lat, cam.lon, buf); buf[0].toDouble() }
+        })
+    }
+
     val activeChannel = remember(activeChannelId, channels) {
         channels.firstOrNull { it.id == activeChannelId }
     }
@@ -103,7 +252,7 @@ fun ScannerScreen(vm: RailFanViewModel) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Radio Scanner", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                    Text("Live feeds & frequency reference", color = TextMuted, fontSize = 13.sp)
+                    Text("Live feeds, railcams & frequency reference", color = TextMuted, fontSize = 13.sp)
                 }
                 if (userLocation != null) {
                     Row(
@@ -131,7 +280,7 @@ fun ScannerScreen(vm: RailFanViewModel) {
                     .background(BgCard)
                     .padding(4.dp)
             ) {
-                listOf("Live Feeds", "Frequencies", "Log").forEachIndexed { index, label ->
+                listOf("Live Feeds", "Live Cams", "Frequencies", "Log").forEachIndexed { index, label ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -151,11 +300,11 @@ fun ScannerScreen(vm: RailFanViewModel) {
                                 fontSize = 13.sp,
                                 fontWeight = if (selectedTab == index) FontWeight.Medium else FontWeight.Normal
                             )
-                            if (index == 2 && recentTransmissions.isNotEmpty()) {
+                            if (index == 3 && recentTransmissions.isNotEmpty()) {
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (selectedTab == 2) Color.White.copy(alpha = 0.25f) else RailBlue)
+                                        .background(if (selectedTab == 3) Color.White.copy(alpha = 0.25f) else RailBlue)
                                         .padding(horizontal = 5.dp, vertical = 1.dp)
                                 ) {
                                     Text(
@@ -203,21 +352,26 @@ fun ScannerScreen(vm: RailFanViewModel) {
                             }
                         }
 
-                        val nearestFeedUrl = sortedFeeds.firstOrNull { it.lat != null }?.url
-
-                        items(sortedFeeds) { feed ->
+                        items(displayFeeds) { feed ->
                             val isBrowseAll = feed.lat == null
                             val isNearest   = !isBrowseAll && feed.url == nearestFeedUrl && userLocation != null
+                            val isFavorite  = feed.url in favoriteFeedUrls
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 12.dp, vertical = 3.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .then(if (isNearest) Modifier.border(1.dp, RailBlue.copy(alpha = 0.45f), RoundedCornerShape(12.dp)) else Modifier)
+                                    .then(
+                                        when {
+                                            isFavorite  -> Modifier.border(1.dp, RailAmber.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                            isNearest   -> Modifier.border(1.dp, RailBlue.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                                            else        -> Modifier
+                                        }
+                                    )
                                     .background(BgCard)
                                     .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(feed.url))) }
-                                    .padding(14.dp),
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -238,7 +392,16 @@ fun ScannerScreen(vm: RailFanViewModel) {
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Medium
                                         )
-                                        if (isNearest) {
+                                        if (isFavorite) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(RailAmber.copy(alpha = 0.12f))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("Pinned", color = RailAmber, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        } else if (isNearest) {
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(4.dp))
@@ -251,13 +414,137 @@ fun ScannerScreen(vm: RailFanViewModel) {
                                     }
                                     Text("${feed.location} · ${feed.railroads}", color = TextMuted, fontSize = 12.sp)
                                 }
-                                Icon(Icons.Default.PlayCircle, null, tint = RailBlue, modifier = Modifier.size(18.dp))
+                                if (!isBrowseAll) {
+                                    IconButton(
+                                        onClick = { vm.toggleFavoriteFeed(feed.url) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                            contentDescription = if (isFavorite) "Unpin feed" else "Pin feed",
+                                            tint = if (isFavorite) RailAmber else TextMuted,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                } else {
+                                    Icon(Icons.Default.PlayCircle, null, tint = RailBlue, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Live Cams ────────────────────────────────────────────
+                    1 -> {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(BgInput)
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Videocam, null, tint = RailBlue, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text("Powered by Virtual Railfan", color = RailBlue, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        if (userLocation != null) "Sorted by distance · Opens YouTube app"
+                                        else "Tap a camera to watch in YouTube",
+                                        color = TextMuted, fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        val nearestCamUrl = sortedCams.firstOrNull { it.lat != 0.0 }?.youtubeUrl
+
+                        items(sortedCams) { cam ->
+                            val isBrowseAll = cam.lat == 0.0 && cam.lon == 0.0
+                            val isNearest   = !isBrowseAll && cam.youtubeUrl == nearestCamUrl && userLocation != null
+                            val distLabel: String? = remember(userLocation, cam) {
+                                val loc = userLocation ?: return@remember null
+                                if (isBrowseAll) return@remember null
+                                val buf = FloatArray(1)
+                                Location.distanceBetween(loc.latitude, loc.longitude, cam.lat, cam.lon, buf)
+                                val miles = buf[0] / 1609.34
+                                if (miles < 10) "< 10 mi" else "${"%.0f".format(miles)} mi"
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 3.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .then(
+                                        if (isNearest) Modifier.border(1.dp, RailBlue.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                                        else Modifier
+                                    )
+                                    .background(BgCard)
+                                    .clickable {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cam.youtubeUrl)))
+                                    }
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    if (isBrowseAll) Icons.Default.OpenInNew else Icons.Default.Videocam,
+                                    contentDescription = null,
+                                    tint = if (isBrowseAll) RailBlue else Color(0xFFE53935),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            cam.name,
+                                            color = if (isBrowseAll) RailBlue else TextPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        if (isNearest) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(RailBlue.copy(alpha = 0.12f))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("Nearest", color = RailBlue, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+                                        if (cam.isMembersOnly) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFF7B1FA2).copy(alpha = 0.15f))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text("Members", color = Color(0xFFBA68C8), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+                                    }
+                                    if (!isBrowseAll) {
+                                        Text(
+                                            buildString {
+                                                append(cam.railroads)
+                                                if (distLabel != null) append(" · $distLabel")
+                                            },
+                                            color = TextMuted,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                Icon(Icons.Default.PlayCircle, null, tint = if (isBrowseAll) RailBlue else Color(0xFFE53935), modifier = Modifier.size(20.dp))
                             }
                         }
                     }
 
                     // ── Frequencies ──────────────────────────────────────────
-                    1 -> {
+                    2 -> {
                         item {
                             Row(
                                 modifier = Modifier
@@ -323,7 +610,7 @@ fun ScannerScreen(vm: RailFanViewModel) {
                     }
 
                     // ── Log ──────────────────────────────────────────────────
-                    2 -> {
+                    3 -> {
                         if (recentTransmissions.isEmpty()) {
                             item {
                                 EmptyState(
@@ -342,7 +629,7 @@ fun ScannerScreen(vm: RailFanViewModel) {
                                         if (channel != null) {
                                             vm.selectChannel(channel.id)
                                             freqRailroadFilter = channel.railroad.name
-                                            selectedTab = 1
+                                            selectedTab = 2
                                         }
                                     }
                                 )

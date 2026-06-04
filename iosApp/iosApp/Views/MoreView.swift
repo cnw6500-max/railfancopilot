@@ -39,6 +39,11 @@ struct MoreView: View {
                                 subtitle: "Display, notifications, about") {
                             AnyView(SettingsView(vm: vm))
                         }
+                        MoreRow(icon: "train.side.front.car", color: .green,
+                                title: "Trip Log",
+                                subtitle: "Log your train rides — miles & duration") {
+                            AnyView(TripsView(vm: vm))
+                        }
                         Spacer(minLength: 40)
                     }
                     .padding(.top)

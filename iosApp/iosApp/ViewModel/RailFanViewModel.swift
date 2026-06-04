@@ -44,6 +44,45 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isPurchased   = false
     @Published var isInTrial     = false
     @Published var trialDaysLeft = 0
+    private var trialTimer: Timer?
+
+    // Commuter feed toggles
+    @Published var njtEnabled       = UserDefaults.standard.bool(forKey: "njtEnabled")
+    @Published var vreEnabled       = UserDefaults.standard.bool(forKey: "vreEnabled")
+    @Published var marcEnabled      = UserDefaults.standard.bool(forKey: "marcEnabled")
+    @Published var metrolinkEnabled = UserDefaults.standard.bool(forKey: "metrolinkEnabled")
+
+    // Notification preferences
+    @Published var goldenHourAlertsEnabled = UserDefaults.standard.object(forKey: "goldenHourAlerts") as? Bool ?? true
+
+    // Favorite scanner feed URLs
+    @Published var favoriteFeedUrls: Set<String> = {
+        let arr = UserDefaults.standard.stringArray(forKey: "favoriteFeedUrls") ?? []
+        return Set(arr)
+    }()
+
+    // ── Loco number lookup ────────────────────────────────────────────────────
+    @Published var locoNumberResult: String? = nil
+    @Published var isLocoNumberLoading = false
+    @Published var locoNumberError: String? = nil
+
+    // ── Timetable ─────────────────────────────────────────────────────────────
+    @Published var timetableStops: [TimetableStopSwift] = []
+    @Published var isTimetableLoading = false
+    @Published var timetableError: String? = nil
+
+    // ── Station departures ────────────────────────────────────────────────────
+    @Published var stationDepartures: [StationDepartureSwift] = []
+    @Published var isStationLoading = false
+    @Published var stationError: String? = nil
+
+    // ── Trip logging ──────────────────────────────────────────────────────────
+    @Published var activeTrip: TripLogSwift? = nil
+    @Published var completedTrips: [TripLogSwift] = []
+    private var tripLastLocation: CLLocation? = nil
+
+    var totalTripMiles: Double { completedTrips.reduce(0) { $0 + $1.distanceMiles } }
+    var totalTripHours: Double { completedTrips.reduce(0) { $0 + Double($1.durationMinutes) / 60.0 } }
 
     /// Pro features are active while purchased or within the 7-day trial window.
     var isPremium: Bool { isPurchased || isInTrial }
@@ -74,6 +113,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.startUpdatingLocation()
         radioChannels = helper.getAARFrequencies() as? [RadioChannel] ?? []
         loadSavedLocations()
+        loadTrips()
         isPurchased = UserDefaults.standard.bool(forKey: "isPremium")
         seedTrialIfNeeded()
         Task { await FirestoreManager.shared.ensureAuth() }
@@ -249,20 +289,194 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         UserDefaults.standard.set(true, forKey: "isPremium")
     }
 
-    private func seedTrialIfNeeded() {
-        let trialDurationMs: Double = 7 * 24 * 60 * 60 * 1000
-        let savedStart = UserDefaults.standard.double(forKey: "trialStartMs")
-        let startMs: Double
-        if savedStart == 0 {
-            startMs = Date().timeIntervalSince1970 * 1000
-            UserDefaults.standard.set(startMs, forKey: "trialStartMs")
-        } else {
-            startMs = savedStart
+    // ── Agency toggle saves ───────────────────────────────────────────────────
+    func setNjt(_ on: Bool)       { njtEnabled = on;       UserDefaults.standard.set(on, forKey: "njtEnabled") }
+    func setVre(_ on: Bool)       { vreEnabled = on;       UserDefaults.standard.set(on, forKey: "vreEnabled") }
+    func setMarc(_ on: Bool)      { marcEnabled = on;      UserDefaults.standard.set(on, forKey: "marcEnabled") }
+    func setMetrolink(_ on: Bool) { metrolinkEnabled = on; UserDefaults.standard.set(on, forKey: "metrolinkEnabled") }
+    func setGoldenHourAlerts(_ on: Bool) {
+        goldenHourAlertsEnabled = on
+        UserDefaults.standard.set(on, forKey: "goldenHourAlerts")
+    }
+
+    // ── Favourite scanner feeds ───────────────────────────────────────────────
+    func toggleFavouriteFeed(_ url: String) {
+        if favoriteFeedUrls.contains(url) { favoriteFeedUrls.remove(url) }
+        else { favoriteFeedUrls.insert(url) }
+        UserDefaults.standard.set(Array(favoriteFeedUrls), forKey: "favoriteFeedUrls")
+    }
+
+    // ── Loco number lookup ────────────────────────────────────────────────────
+    func lookupLocoNumber(_ roadNumber: String) {
+        guard !roadNumber.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        isLocoNumberLoading = true
+        locoNumberResult = nil
+        locoNumberError  = nil
+        Task {
+            do {
+                locoNumberResult = try await FirebaseFunctionsClient.shared.lookupLocoNumber(roadNumber: roadNumber)
+            } catch {
+                locoNumberError = "Lookup failed — check your connection"
+            }
+            isLocoNumberLoading = false
         }
+    }
+
+    // ── Timetable ─────────────────────────────────────────────────────────────
+    func loadTimetable(for train: TrainLocation) {
+        guard train.railroad == .AMTRAK else {
+            timetableError = "Timetables are currently available for Amtrak only"
+            timetableStops = []
+            return
+        }
+        let trainNum = train.symbol.components(separatedBy: "#").last?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        guard !trainNum.isEmpty, trainNum.allSatisfy(\.isNumber) else {
+            timetableError = "Could not determine train number from \"\(train.symbol)\""
+            return
+        }
+        isTimetableLoading = true
+        timetableError = nil
+        Task {
+            do {
+                let url = URL(string: "https://api.amtraker.com/v3/trains/\(trainNum)")!
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let allTrains = json?.values.compactMap { $0 as? [[String: Any]] }.flatMap { $0 }
+                let stations = allTrains?.first?["stations"] as? [[String: Any]] ?? []
+                timetableStops = stations.map { TimetableStopSwift(json: $0) }
+                if timetableStops.isEmpty { timetableError = "No timetable data for train #\(trainNum)" }
+            } catch {
+                timetableError = "Couldn't load timetable — check your connection"
+            }
+            isTimetableLoading = false
+        }
+    }
+
+    func clearTimetable() { timetableStops = []; timetableError = nil }
+
+    // ── Station departures ────────────────────────────────────────────────────
+    func loadStationDepartures(code: String) {
+        guard !code.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        isStationLoading = true
+        stationError = nil
+        stationDepartures = []
+        let upper = code.uppercased()
+        Task {
+            do {
+                let url = URL(string: "https://api.amtraker.com/v3/stations/\(upper)")!
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let allTrains = json?.values.compactMap { $0 as? [[String: Any]] }.flatMap { $0 } ?? []
+                stationDepartures = allTrains.map { t in
+                    let stations = (t["stations"] as? [[String: Any]] ?? []).map { TimetableStopSwift(json: $0) }
+                    return StationDepartureSwift(
+                        symbol:    "Amtrak #\(t["trainNum"] as? String ?? "")",
+                        routeName: t["routeName"] as? String ?? "",
+                        stops:     stations
+                    )
+                }.sorted {
+                    let a = $0.stops.first { $0.code == upper }?.scheduledDeparture ?? "99:99"
+                    let b = $1.stops.first { $0.code == upper }?.scheduledDeparture ?? "99:99"
+                    return a < b
+                }
+                if stationDepartures.isEmpty { stationError = "No trains found for \"\(upper)\"" }
+            } catch {
+                stationError = "Couldn't load departures — check your connection"
+            }
+            isStationLoading = false
+        }
+    }
+
+    // ── Trip logging ──────────────────────────────────────────────────────────
+    func startTrip(train: TrainLocation, boardingStation: String? = nil) {
+        guard activeTrip == nil else { return }
+        let trip = TripLogSwift(
+            id: UUID().uuidString, trainId: train.id,
+            trainSymbol: train.symbol, railroad: train.railroad.displayName,
+            startMs: Int64(Date().timeIntervalSince1970 * 1000),
+            boardingStation: boardingStation?.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        )
+        activeTrip = trip
+        if let loc = userLocation {
+            tripLastLocation = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+        }
+        saveTrips()
+    }
+
+    func accumulateTripDistance() {
+        guard var trip = activeTrip, let loc = userLocation else { return }
+        let current = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+        if let last = tripLastLocation {
+            let addedMiles = last.distance(from: current) / 1609.34
+            if addedMiles > 0.05 {
+                trip.distanceMiles += addedMiles
+                activeTrip = trip
+            }
+        }
+        tripLastLocation = current
+    }
+
+    func endTrip(notes: String? = nil, alightingStation: String? = nil) {
+        guard var trip = activeTrip else { return }
+        trip.endMs = Int64(Date().timeIntervalSince1970 * 1000)
+        trip.notes = notes?.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        trip.alightingStation = alightingStation?.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        completedTrips.insert(trip, at: 0)
+        activeTrip = nil
+        tripLastLocation = nil
+        saveTrips()
+    }
+
+    func deleteTrip(id: String) {
+        completedTrips.removeAll { $0.id == id }
+        saveTrips()
+    }
+
+    private func loadTrips() {
+        if let data = UserDefaults.standard.data(forKey: "completedTrips"),
+           let trips = try? JSONDecoder().decode([TripLogSwift].self, from: data) {
+            completedTrips = trips
+        }
+        if let data = UserDefaults.standard.data(forKey: "activeTrip"),
+           let trip = try? JSONDecoder().decode(TripLogSwift.self, from: data) {
+            activeTrip = trip
+        }
+    }
+
+    private func saveTrips() {
+        if let data = try? JSONEncoder().encode(completedTrips) {
+            UserDefaults.standard.set(data, forKey: "completedTrips")
+        }
+        if let trip = activeTrip, let data = try? JSONEncoder().encode(trip) {
+            UserDefaults.standard.set(data, forKey: "activeTrip")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "activeTrip")
+        }
+    }
+
+    private func seedTrialIfNeeded() {
+        let saved = UserDefaults.standard.double(forKey: "trialStartMs")
+        if saved == 0 {
+            let now = Date().timeIntervalSince1970 * 1000
+            UserDefaults.standard.set(now, forKey: "trialStartMs")
+        }
+        refreshTrialState()
+        // Re-evaluate every minute so expiry takes effect without a restart.
+        trialTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.refreshTrialState()
+        }
+    }
+
+    private func refreshTrialState() {
+        let trialDurationMs: Double = 7 * 24 * 60 * 60 * 1000
+        let startMs = UserDefaults.standard.double(forKey: "trialStartMs")
         let elapsedMs = Date().timeIntervalSince1970 * 1000 - startMs
-        isInTrial = elapsedMs < trialDurationMs
+        let nowInTrial = elapsedMs < trialDurationMs
         let remainingMs = max(0, trialDurationMs - elapsedMs)
-        trialDaysLeft = Int(ceil(remainingMs / (24 * 60 * 60 * 1000)))
+        let daysLeft = Int(ceil(remainingMs / (24 * 60 * 60 * 1000)))
+        if isInTrial != nowInTrial { isInTrial = nowInTrial }
+        if trialDaysLeft != daysLeft { trialDaysLeft = daysLeft }
     }
 }
 
@@ -293,4 +507,81 @@ private struct SavedLocationCodable: Codable {
 
 private extension String {
     var isBlank: Bool { trimmingCharacters(in: .whitespaces).isEmpty }
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+// ── Swift-side model types (not in KMP) ───────────────────────────────────────
+
+struct TripLogSwift: Codable, Identifiable {
+    let id: String
+    let trainId: String
+    let trainSymbol: String
+    let railroad: String
+    let startMs: Int64
+    var endMs: Int64 = 0
+    var distanceMiles: Double = 0
+    var boardingStation: String? = nil
+    var alightingStation: String? = nil
+    var notes: String? = nil
+
+    var isActive: Bool { endMs == 0 }
+    var durationMinutes: Int {
+        guard endMs > startMs else { return 0 }
+        return Int((endMs - startMs) / 60_000)
+    }
+    var startDate: Date { Date(timeIntervalSince1970: Double(startMs) / 1000) }
+}
+
+struct TimetableStopSwift: Identifiable {
+    let id = UUID()
+    let code: String
+    let scheduledArrival: String?
+    let scheduledDeparture: String?
+    let actualArrival: String?
+    let actualDeparture: String?
+    let arrivalStatus: String?
+    let departureStatus: String?
+    let isBus: Bool
+    let hasDeparted: Bool
+    let hasArrived: Bool
+
+    init(json: [String: Any]) {
+        code               = json["code"] as? String ?? ""
+        isBus              = json["bus"]     as? Bool ?? false
+        hasDeparted        = json["postdep"] as? Bool ?? false
+        hasArrived         = json["postarr"] as? Bool ?? false
+        arrivalStatus      = (json["arrCmnt"] as? String)?.nilIfEmpty
+        departureStatus    = (json["depCmnt"] as? String)?.nilIfEmpty
+
+        func fmt(_ iso: String?) -> String? {
+            guard let s = iso else { return nil }
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            var d = f.date(from: s)
+            if d == nil {
+                f.formatOptions = [.withInternetDateTime]
+                d = f.date(from: s)
+            }
+            guard let date = d else { return nil }
+            let out = DateFormatter()
+            out.dateFormat = "h:mm a"
+            return out.string(from: date)
+        }
+
+        scheduledArrival   = fmt(json["schArr"] as? String)
+        scheduledDeparture = fmt(json["schDep"] as? String)
+        actualArrival      = fmt(json["arr"]    as? String)
+        actualDeparture    = fmt(json["dep"]    as? String)
+    }
+}
+
+struct StationDepartureSwift: Identifiable {
+    let id = UUID()
+    let symbol: String
+    let routeName: String
+    let stops: [TimetableStopSwift]
+}
+
+private extension Optional where Wrapped == String {
+    var nilIfEmpty: String? { self?.nilIfEmpty }
 }

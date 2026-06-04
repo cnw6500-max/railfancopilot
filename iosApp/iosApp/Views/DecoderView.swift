@@ -4,6 +4,7 @@ import shared
 struct DecoderView: View {
     @ObservedObject var vm: RailFanViewModel
     @State private var symbolInput = ""
+    @State private var locoInput = ""
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -101,6 +102,70 @@ struct DecoderView: View {
                             .padding(24)
                         }
                     }
+                    // ── Loco Number Lookup ────────────────────────────────────
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Locomotive Number Lookup")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.textPrimary)
+                        Text("Type a road number — no photo needed")
+                            .font(.system(size: 12)).foregroundColor(.textMuted)
+
+                        HStack(spacing: 10) {
+                            TextField("e.g. BNSF 3751, UP 4141", text: $locoInput)
+                                .font(.system(size: 15, design: .monospaced))
+                                .foregroundColor(.textPrimary)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .padding(12).background(Color.bgInput).cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.borderLight, lineWidth: 0.5))
+
+                            Button {
+                                let n = locoInput.trimmingCharacters(in: .whitespaces)
+                                guard !n.isEmpty else { return }
+                                inputFocused = false
+                                vm.lookupLocoNumber(n)
+                            } label: {
+                                if vm.isLocoNumberLoading {
+                                    ProgressView().tint(.white).scaleEffect(0.8)
+                                        .frame(width: 60, height: 44)
+                                } else {
+                                    Text("Lookup").font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.white).frame(width: 60, height: 44)
+                                }
+                            }
+                            .background(locoInput.isEmpty ? Color.railBlueDark : Color.railBlueMid)
+                            .cornerRadius(10)
+                            .disabled(locoInput.isEmpty || vm.isLocoNumberLoading)
+                        }
+
+                        if let err = vm.locoNumberError {
+                            Text(err).font(.system(size: 13)).foregroundColor(.red)
+                        }
+                        if let result = vm.locoNumberResult {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: "train.side.front.car")
+                                        .foregroundColor(.railBlue)
+                                    Text("Identified").font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.railBlue)
+                                    Spacer()
+                                    Button { vm.locoNumberResult = nil } label: {
+                                        Image(systemName: "xmark.circle.fill").foregroundColor(.textMuted)
+                                    }
+                                }
+                                Text(result).font(.system(size: 13)).foregroundColor(.textSecondary)
+                                    .lineSpacing(4)
+                            }
+                            .padding(12).background(Color.bgCard)
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.borderLight, lineWidth: 0.5))
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 80)
+
                     .padding(.vertical)
                 }
             }
@@ -111,6 +176,9 @@ struct DecoderView: View {
             .onTapGesture { inputFocused = false }
         }
     }
+
+    // ── Loco number lookup section appended inside body's ScrollView ──────────
+    // (Called from body's VStack via a helper view)
 
     private func decodeIfNeeded() {
         let s = symbolInput.trimmingCharacters(in: .whitespaces)

@@ -7,7 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,6 +105,7 @@ fun MapScreen(vm: RailFanViewModel) {
     var searchQuery by remember { mutableStateOf("") }
     var searchFocused by remember { mutableStateOf(false) }
     var searchPinLatLng by remember { mutableStateOf<LatLng?>(null) }
+    var showStationBoard by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
@@ -424,6 +427,7 @@ fun MapScreen(vm: RailFanViewModel) {
                     FilterChip("Rail Map", showRailwayMap) { showRailwayMap = !showRailwayMap }
                     FilterChip("Rail Lines", showRailLines) { showRailLines = !showRailLines }
                     FilterChip("Sightings", showSightings) { showSightings = !showSightings }
+                    FilterChip("Station Board", false) { showStationBoard = true }
                 }
             }
         }
@@ -510,6 +514,13 @@ fun MapScreen(vm: RailFanViewModel) {
     selectedSighting?.let { report ->
         SightingDetailSheet(report, nowMs) { selectedSightingId = null }
     }
+
+    if (showStationBoard) {
+        StationDeparturesSheet(vm = vm, onDismiss = {
+            showStationBoard = false
+            vm.clearStationDepartures()
+        })
+    }
 }
 
 @Composable
@@ -534,8 +545,15 @@ fun SearchResultRow(result: GeoSearchResult, isLast: Boolean, onClick: () -> Uni
 fun TrainDetailSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -> Unit) {
     val userLocation    by vm.userLocation.collectAsState()
     val approachEtaMin  by vm.approachEtaMin.collectAsState()
+    val activeTrip      by vm.activeTrip.collectAsState()
+    val speedHistory    by vm.speedHistory.collectAsState()
     var showSaveDialog  by remember { mutableStateOf(false) }
     var savedConfirmed  by remember { mutableStateOf(false) }
+    var showTimetable        by remember { mutableStateOf(false) }
+    var showBoardingDialog   by remember { mutableStateOf(false) }
+    var boardingStationInput by remember { mutableStateOf("") }
+    val isRidingThis    = activeTrip?.trainId == train.id
+    val speeds          = speedHistory[train.id] ?: emptyList()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -597,6 +615,11 @@ fun TrainDetailSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -
                 }
             }
 
+            // ── Speed sparkline ───────────────────────────────────────────────
+            if (speeds.size >= 2) {
+                SpeedSparkline(speeds = speeds, currentMph = train.speedMph)
+            }
+
             // ── Route detail rows ─────────────────────────────────────────────
             Column {
                 DetailRow("Origin", train.origin.ifBlank { "—" })
@@ -630,6 +653,115 @@ fun TrainDetailSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -
                 }
             }
 
+            // ── Ride this Train ───────────────────────────────────────────────
+            when {
+                isRidingThis -> {
+                    // Already on this train — show live distance + end button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0F2A18))
+                            .border(0.5.dp, RailGreen.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(RailGreen)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Riding", color = RailGreen, fontSize = 11.sp)
+                            Text(
+                                "${"%.1f".format(activeTrip!!.distanceMiles)} mi · ${activeTrip!!.durationMinutes} min",
+                                color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { vm.endTrip() },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = RailGreen),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, RailGreen.copy(alpha = 0.5f)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Stop, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("End Trip", fontSize = 12.sp)
+                        }
+                    }
+                }
+                activeTrip != null -> {
+                    // On a different train — show info, no start button
+                    Text(
+                        "Trip active on ${activeTrip!!.trainSymbol} — end it first to start a new one",
+                        color = TextMuted, fontSize = 12.sp
+                    )
+                }
+                else -> {
+                    // No active trip — offer to start one
+                    OutlinedButton(
+                        onClick = { showBoardingDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = RailGreen),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, RailGreen.copy(alpha = 0.5f))
+                    ) {
+                        Icon(Icons.Default.DirectionsRailway, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Ride this Train")
+                    }
+                }
+            }
+
+            // ── Share sighting ────────────────────────────────────────────────
+            val context = androidx.compose.ui.platform.LocalContext.current
+            OutlinedButton(
+                onClick = {
+                    val statusText = train.status.name.lowercase().replace("_", " ")
+                        .replaceFirstChar { it.uppercase() }
+                    val text = buildString {
+                        appendLine("🚂 ${train.symbol}")
+                        appendLine("${train.railroad.displayName} · ${train.speedMph} mph · $statusText")
+                        if (train.origin.isNotBlank() && train.destination.isNotBlank())
+                            appendLine("${train.origin} → ${train.destination}")
+                        train.subdivision?.let { appendLine("Subdivision: $it") }
+                        train.milepost?.let { appendLine("MP ${"%.1f".format(it)}") }
+                        append("via Railfan Copilot")
+                    }
+                    context.startActivity(
+                        android.content.Intent.createChooser(
+                            android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_TEXT, text)
+                            }, "Share sighting"
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderLight)
+            ) {
+                Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Share Sighting")
+            }
+
+            // ── Timetable ─────────────────────────────────────────────────────
+            OutlinedButton(
+                onClick = {
+                    showTimetable = true
+                    vm.loadTimetable(train)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = RailBlue),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, RailBlueMid)
+            ) {
+                Icon(Icons.Default.Schedule, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Timetable")
+            }
+
             // ── Save location ─────────────────────────────────────────────────
             OutlinedButton(
                 onClick = { showSaveDialog = true },
@@ -659,6 +791,469 @@ fun TrainDetailSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -
                 savedConfirmed = true
             }
         )
+    }
+
+    if (showBoardingDialog) {
+        AlertDialog(
+            onDismissRequest = { showBoardingDialog = false },
+            containerColor = BgCard,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.DirectionsRailway, null, tint = RailGreen,
+                        modifier = Modifier.size(20.dp))
+                    Text("Start Trip", color = TextPrimary, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Boarding ${train.symbol}", color = TextSecondary, fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = boardingStationInput,
+                        onValueChange = { boardingStationInput = it },
+                        label = { Text("Boarding station (optional)", color = TextMuted,
+                            fontSize = 12.sp) },
+                        placeholder = { Text("e.g. Chicago Union Station", color = TextMuted,
+                            fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = RailGreen, unfocusedBorderColor = Border,
+                            focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
+                            cursorColor = RailGreen,
+                            focusedContainerColor = BgCard, unfocusedContainerColor = BgCard
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.startTrip(train, boardingStationInput.ifBlank { null })
+                        showBoardingDialog = false
+                        boardingStationInput = ""
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RailGreen.copy(alpha = 0.8f))
+                ) { Text("Start", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBoardingDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            }
+        )
+    }
+
+    if (showTimetable) {
+        TimetableSheet(train = train, vm = vm, onDismiss = {
+            showTimetable = false
+            vm.clearTimetable()
+        })
+    }
+}
+
+// ── StationDeparturesSheet ────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StationDeparturesSheet(vm: RailFanViewModel, onDismiss: () -> Unit) {
+    val departures by vm.stationDepartures.collectAsState()
+    val loading    by vm.stationDeparturesLoading.collectAsState()
+    val error      by vm.stationDeparturesError.collectAsState()
+    var codeInput  by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = BgCard,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Default.Train, null, tint = RailBlue, modifier = Modifier.size(20.dp))
+                Text("Station Board", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            // Station code input
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = codeInput,
+                    onValueChange = { codeInput = it.uppercase().take(5) },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Station code", color = TextMuted, fontSize = 12.sp) },
+                    placeholder = { Text("e.g. CHI, NYP, LAX", color = TextMuted, fontSize = 13.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = RailBlue, unfocusedBorderColor = Border,
+                        focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
+                        cursorColor = RailBlue,
+                        focusedContainerColor = BgCard, unfocusedContainerColor = BgCard
+                    ),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSearch = { if (codeInput.isNotBlank()) vm.loadStationDepartures(codeInput) }
+                    )
+                )
+                Button(
+                    onClick = { if (codeInput.isNotBlank()) vm.loadStationDepartures(codeInput) },
+                    colors = ButtonDefaults.buttonColors(containerColor = RailBlue),
+                    enabled = codeInput.isNotBlank() && !loading
+                ) {
+                    if (loading) CircularProgressIndicator(color = Color.White,
+                        modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            // Common station quick-picks
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val common = listOf("NYP", "CHI", "LAX", "WAS", "BOS", "SEA", "NOL", "SAS", "EMY")
+                items(common) { code ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BgInput)
+                            .border(0.5.dp, BorderLight, RoundedCornerShape(8.dp))
+                            .clickable { codeInput = code; vm.loadStationDepartures(code) }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(code, color = RailBlue, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
+            when {
+                error != null -> {
+                    Row(
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1A0A0A)).padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = RailAmber, modifier = Modifier.size(16.dp))
+                        Text(error!!, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+                departures.isNotEmpty() -> {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 400.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(departures) { dep ->
+                            val stop = dep.stops.firstOrNull { it.code.equals(codeInput, ignoreCase = true) }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(BgPrimary)
+                                    .border(0.5.dp, BorderLight, RoundedCornerShape(10.dp))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(dep.trainSymbol, color = TextPrimary, fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium)
+                                    Text(dep.routeName, color = TextMuted, fontSize = 12.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    val depTime = stop?.actualDeparture ?: stop?.scheduledDeparture
+                                    val arrTime = stop?.actualArrival ?: stop?.scheduledArrival
+                                    depTime?.let { Text("DEP $it", color = RailBlue, fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium) }
+                                    arrTime?.let { Text("ARR $it", color = TextMuted, fontSize = 11.sp) }
+                                    stop?.departureStatus?.let {
+                                        val isLate = it.contains("Late", ignoreCase = true)
+                                        Text(it, color = if (isLate) RailAmber else RailGreen,
+                                            fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Speed sparkline ───────────────────────────────────────────────────────────
+
+@Composable
+fun SpeedSparkline(speeds: List<Int>, currentMph: Int) {
+    val lineColor = when {
+        currentMph > 70 -> RailGreen
+        currentMph > 30 -> RailBlueMid
+        currentMph > 0  -> RailBlue
+        else            -> Border
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(28.dp)
+        ) {
+            val max = speeds.maxOrNull()?.toFloat()?.coerceAtLeast(10f) ?: 10f
+            val stepX = if (speeds.size > 1) size.width / (speeds.size - 1) else size.width
+            val pts = speeds.mapIndexed { i, spd ->
+                Offset(i * stepX, size.height - (spd / max) * size.height * 0.9f)
+            }
+            // Fill area under line
+            if (pts.size >= 2) {
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(pts.first().x, size.height)
+                    pts.forEach { lineTo(it.x, it.y) }
+                    lineTo(pts.last().x, size.height)
+                    close()
+                }
+                drawPath(path, color = lineColor.copy(alpha = 0.12f))
+                // Draw line
+                for (i in 0 until pts.lastIndex) {
+                    drawLine(lineColor.copy(alpha = 0.7f), pts[i], pts[i + 1], strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                }
+                // Current point dot
+                drawCircle(lineColor, radius = 3.dp.toPx(), center = pts.last())
+            }
+        }
+        Text("$currentMph mph", color = lineColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+// ── TimetableSheet ────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimetableSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -> Unit) {
+    val stops   by vm.timetable.collectAsState()
+    val loading by vm.timetableLoading.collectAsState()
+    val error   by vm.timetableError.collectAsState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = BgCard,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                Icon(Icons.Default.Schedule, null, tint = RailBlue, modifier = Modifier.size(20.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Timetable", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                    Text(train.symbol, color = TextMuted, fontSize = 12.sp)
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            when {
+                loading -> {
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(color = RailBlue, strokeWidth = 2.dp,
+                                modifier = Modifier.size(24.dp))
+                            Text("Loading timetable…", color = TextMuted, fontSize = 13.sp)
+                        }
+                    }
+                }
+                error != null -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1A0A0A))
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = RailAmber, modifier = Modifier.size(16.dp))
+                        Text(error!!, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+                stops.isEmpty() -> {
+                    Text("No stops found.", color = TextMuted, fontSize = 13.sp)
+                }
+                else -> {
+                    // Find the index of the "current" stop (last departed or first not-yet-arrived)
+                    val currentIdx = stops.indexOfLast { it.hasDeparted }
+                        .coerceAtLeast(0)
+
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 480.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        itemsIndexed(stops) { index, stop ->
+                            TimetableStopRow(
+                                stop      = stop,
+                                isPast    = stop.hasDeparted,
+                                isCurrent = index == currentIdx + 1 && !stops[currentIdx].hasDeparted.not(),
+                                isLast    = index == stops.lastIndex
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Scheduled times shown. Actual times update when known.",
+                        color = TextMuted, fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TimetableStopRow(
+    stop: TimetableStop,
+    isPast: Boolean,
+    isCurrent: Boolean,
+    isLast: Boolean
+) {
+    val textColor = when {
+        isCurrent -> TextPrimary
+        isPast    -> TextMuted
+        else      -> TextSecondary
+    }
+    val timeColor = when {
+        isCurrent -> RailBlue
+        isPast    -> TextMuted.copy(alpha = 0.6f)
+        else      -> TextPrimary
+    }
+    val dotColor = when {
+        isCurrent -> RailBlue
+        isPast    -> Border
+        else      -> BorderLight
+    }
+
+    // Determine the best departure time to show: actual if known, else scheduled
+    val arrDisplay = stop.actualArrival ?: stop.scheduledArrival
+    val depDisplay = stop.actualDeparture ?: stop.scheduledDeparture
+
+    // Status chip text
+    val statusText = stop.departureStatus ?: stop.arrivalStatus
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Timeline column
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.width(16.dp)
+        ) {
+            if (!isLast) {
+                Box(modifier = Modifier.width(2.dp).height(8.dp)
+                    .background(if (isPast) Border else BorderLight))
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
+            Box(modifier = Modifier
+                .size(10.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(dotColor)
+                .then(if (isCurrent) Modifier.border(2.dp, RailBlue, RoundedCornerShape(5.dp)) else Modifier)
+            )
+            if (!isLast) {
+                Box(modifier = Modifier.width(2.dp).weight(1f).heightIn(min = 20.dp)
+                    .background(if (isPast) Border else BorderLight))
+            }
+        }
+
+        // Stop content
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(bottom = 12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    stop.code,
+                    color = if (isCurrent) TextPrimary else textColor,
+                    fontSize = if (isCurrent) 15.sp else 14.sp,
+                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal
+                )
+                if (stop.isBusThruway) {
+                    Box(modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(RailAmber.copy(alpha = 0.15f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)) {
+                        Text("Bus", color = RailAmber, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                if (isCurrent) {
+                    Box(modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(RailBlue.copy(alpha = 0.15f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)) {
+                        Text("Next stop", color = RailBlue, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                statusText?.let {
+                    val isLate = it.contains("Late", ignoreCase = true) ||
+                                 it.contains("min", ignoreCase = true)
+                    Text(it, color = if (isLate) RailAmber else RailGreen.copy(alpha = 0.8f),
+                        fontSize = 10.sp)
+                }
+            }
+
+            if (arrDisplay != null || depDisplay != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    arrDisplay?.let {
+                        Column {
+                            Text("ARR", color = TextMuted, fontSize = 9.sp)
+                            Text(it, color = timeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                    depDisplay?.let {
+                        Column {
+                            Text("DEP", color = TextMuted, fontSize = 9.sp)
+                            Text(it, color = timeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

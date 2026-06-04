@@ -18,15 +18,23 @@ import java.util.concurrent.TimeUnit
 interface AmtrakApiService {
     @GET("v3/trains")
     suspend fun getTrains(): Map<String, List<AmtrakTrainJson>>
+
+    /** Fetch a single train by number — returns the same map shape as /v3/trains. */
+    @GET("v3/trains/{trainNum}")
+    suspend fun getTrain(@Path("trainNum") trainNum: String): Map<String, List<AmtrakTrainJson>>
+
+    /** All trains currently calling at a specific station code (e.g. "CHI", "NYP"). */
+    @GET("v3/stations/{stationCode}")
+    suspend fun getStationTrains(@Path("stationCode") stationCode: String): Map<String, List<AmtrakTrainJson>>
 }
 
 data class AmtrakTrainJson(
-    val trainNum: String = "",      // API sometimes returns alphanumeric e.g. "b5150"
+    val trainNum: String = "",
     val routeName: String = "",
     val lat: Double? = null,
     val lon: Double? = null,
-    val heading: String? = null,    // cardinal direction e.g. "N", "NE", or numeric string
-    val velocity: Double? = null,   // API returns float mph e.g. 72.899
+    val heading: String? = null,
+    val velocity: Double? = null,
     val trainTimely: String = "",
     val stations: List<AmtrakStationJson> = emptyList(),
     val trainState: String = ""
@@ -34,7 +42,24 @@ data class AmtrakTrainJson(
 
 data class AmtrakStationJson(
     val code: String = "",
-    val status: String = ""
+    val tz: String = "",
+    val bus: Boolean = false,
+    /** ISO-8601 scheduled arrival, may include timezone offset */
+    val schArr: String? = null,
+    /** ISO-8601 scheduled departure */
+    val schDep: String? = null,
+    /** ISO-8601 actual/estimated arrival; null if not yet known */
+    val arr: String? = null,
+    /** ISO-8601 actual/estimated departure; null if not yet departed */
+    val dep: String? = null,
+    /** Human text e.g. "On Time", "4 Minutes Late" */
+    val arrCmnt: String? = null,
+    val depCmnt: String? = null,
+    /** "Enroute", "Departed", "Station" */
+    val status: String = "",
+    /** true once the train has passed this station */
+    val postdep: Boolean = false,
+    val postarr: Boolean = false
 )
 
 // ── Nominatim geocoding (OpenStreetMap, free, no auth) ────────────────────────

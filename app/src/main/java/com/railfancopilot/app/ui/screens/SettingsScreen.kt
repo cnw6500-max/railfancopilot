@@ -71,6 +71,11 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val mtaMetroNorthEnabled by vm.mtaMetroNorthEnabled.collectAsState()
     val caltrainEnabled      by vm.caltrainEnabled.collectAsState()
     val soundTransitEnabled  by vm.soundTransitEnabled.collectAsState()
+    val njtEnabled           by vm.njtEnabled.collectAsState()
+    val vreEnabled           by vm.vreEnabled.collectAsState()
+    val marcEnabled          by vm.marcEnabled.collectAsState()
+    val metrolinkEnabled     by vm.metrolinkEnabled.collectAsState()
+    val alertGoldenHour      by vm.alertGoldenHour.collectAsState()
     val userName             by vm.userName.collectAsState()
     var userNameDraft by remember(userName) { mutableStateOf(userName) }
 
@@ -239,6 +244,14 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
 
         item {
             SettingsCard {
+                SwitchSetting(
+                    icon     = Icons.Default.WbSunny,
+                    title    = "Golden hour alerts",
+                    subtitle = "Notify at sunrise and sunset for photography",
+                    checked  = alertGoldenHour,
+                    onCheckedChange = { vm.setAlertGoldenHour(it) }
+                )
+                SettingsDivider()
                 if (isPro) {
                     SliderSetting(
                         icon = Icons.Default.NotificationsActive,
@@ -345,6 +358,36 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     checked = mtaMetroNorthEnabled,
                     onCheckedChange = { vm.saveMtaMetroNorthEnabled(it) }
                 )
+                SettingsDivider()
+                SwitchSetting(
+                    icon = Icons.Default.Train,
+                    title = "NJ Transit Rail",
+                    subtitle = "New Jersey · No account needed",
+                    checked = njtEnabled,
+                    onCheckedChange = { vm.saveNjtEnabled(it) }
+                )
+            }
+        }
+
+        // Mid-Atlantic
+        item { CommuterRegionLabel("Mid-Atlantic") }
+        item {
+            SettingsCard {
+                SwitchSetting(
+                    icon = Icons.Default.Train,
+                    title = "VRE",
+                    subtitle = "Virginia Railway Express · No account needed",
+                    checked = vreEnabled,
+                    onCheckedChange = { vm.saveVreEnabled(it) }
+                )
+                SettingsDivider()
+                SwitchSetting(
+                    icon = Icons.Default.Train,
+                    title = "MARC",
+                    subtitle = "Maryland Area Regional Commuter · No account needed",
+                    checked = marcEnabled,
+                    onCheckedChange = { vm.saveMarcEnabled(it) }
+                )
             }
         }
 
@@ -360,6 +403,20 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     subtitle = "Chicago area · Metra GTFS-RT",
                     checked = metraEnabled,
                     onCheckedChange = { vm.saveMetraEnabled(it) }
+                )
+            }
+        }
+
+        // Southern California
+        item { CommuterRegionLabel("Southern California") }
+        item {
+            SettingsCard {
+                SwitchSetting(
+                    icon = Icons.Default.Train,
+                    title = "Metrolink",
+                    subtitle = "Southern California · No account needed",
+                    checked = metrolinkEnabled,
+                    onCheckedChange = { vm.saveMetrolinkEnabled(it) }
                 )
             }
         }
@@ -483,6 +540,29 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                 InfoRow(Icons.Default.SmartToy, "AI features", "Claude by Anthropic")
                 SettingsDivider()
                 InfoRow(Icons.Default.Router, "Scanner streams", "Audio via HTTP — required for live railroad radio feeds")
+            }
+        }
+
+        // ── Debug tools (debug builds only) ──────────────────────────────────
+        if (com.railfancopilot.app.BuildConfig.DEBUG) {
+            item { SectionHeader("Debug") }
+            item {
+                SettingsCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { vm.debugTriggerReview() }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.Star, null, tint = RailAmber, modifier = Modifier.size(18.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Test Review Prompt", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("Force-fires the in-app review flow (bypasses guards)", color = TextMuted, fontSize = 11.sp)
+                        }
+                    }
+                }
             }
         }
 

@@ -46,6 +46,11 @@ fun DecoderScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val reviewRequested by vm.requestInAppReview.collectAsState()
     var inputText by remember { mutableStateOf("") }
 
+    val locoNumberResult  by vm.locoNumberResult.collectAsState()
+    val locoNumberLoading by vm.locoNumberLoading.collectAsState()
+    val locoNumberError   by vm.locoNumberError.collectAsState()
+    var locoNumberInput   by remember { mutableStateOf("") }
+
     // Launch Play Store in-app review at milestone decode counts (5th, 25th)
     val context = LocalContext.current
     LaunchedEffect(reviewRequested) {
@@ -203,6 +208,87 @@ fun DecoderScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     }, onDelete = { entry ->
                         vm.deleteSymbolDecodeEntry(entry)
                     })
+                }
+            }
+        }
+
+        // ── Locomotive Number Lookup ──────────────────────────────────────────
+        item {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                Text("Locomotive Number Lookup", color = TextPrimary, fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium)
+                Text("Type a road number to identify the unit without a photo",
+                    color = TextMuted, fontSize = 12.sp)
+            }
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = locoNumberInput,
+                    onValueChange = { locoNumberInput = it.uppercase(); vm.clearLocoNumberResult() },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("e.g. BNSF 3751, UP 4141", color = TextMuted,
+                        fontFamily = FontFamily.Monospace) },
+                    textStyle = LocalTextStyle.current.copy(
+                        color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 15.sp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = RailBlueMid, unfocusedBorderColor = BorderLight,
+                        cursorColor = RailBlue),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (locoNumberInput.isNotBlank()) vm.lookupLocoNumber(locoNumberInput)
+                    })
+                )
+                Button(
+                    onClick = { if (locoNumberInput.isNotBlank()) vm.lookupLocoNumber(locoNumberInput) },
+                    enabled = !locoNumberLoading && locoNumberInput.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = RailBlueDark),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.height(56.dp)
+                ) {
+                    if (locoNumberLoading) CircularProgressIndicator(modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp, color = RailBlue)
+                    else { Text("Lookup", color = RailBlue); Spacer(Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = RailBlue,
+                            modifier = Modifier.size(16.dp)) }
+                }
+            }
+        }
+
+        locoNumberError?.let {
+            item { AlertBanner(it, RailRed, AlertBgDanger, AlertBorderDanger) }
+        }
+
+        locoNumberResult?.let { text ->
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(BgCard)
+                        .border(0.5.dp, BorderLight, RoundedCornerShape(12.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.DirectionsRailway, null, tint = RailBlue,
+                            modifier = Modifier.size(18.dp))
+                        Text("Locomotive Identified", color = RailBlue, fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { vm.clearLocoNumberResult() },
+                            modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, null, tint = TextMuted,
+                                modifier = Modifier.size(14.dp))
+                        }
+                    }
+                    Text(text, color = TextSecondary, fontSize = 13.sp, lineHeight = 20.sp)
                 }
             }
         }

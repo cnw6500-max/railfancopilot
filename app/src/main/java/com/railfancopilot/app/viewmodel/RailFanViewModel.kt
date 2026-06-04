@@ -24,7 +24,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.railfancopilot.app.billing.ProRepository
 import com.railfancopilot.app.data.models.*
+import com.railfancopilot.app.data.repository.FirestoreTrailsRepo
 import com.railfancopilot.app.data.repository.RailFanRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -50,17 +53,38 @@ private val PREF_MTA_LIRR_ENABLED          = booleanPreferencesKey("mta_lirr_ena
 private val PREF_MTA_METRO_NORTH_ENABLED   = booleanPreferencesKey("mta_metro_north_enabled")   // default false
 private val PREF_CALTRAIN_ENABLED          = booleanPreferencesKey("caltrain_enabled")          // default false
 private val PREF_SOUND_TRANSIT_ENABLED     = booleanPreferencesKey("sound_transit_enabled")     // default false
+private val PREF_NJT_ENABLED               = booleanPreferencesKey("njt_enabled")               // default false
+private val PREF_VRE_ENABLED               = booleanPreferencesKey("vre_enabled")               // default false
+private val PREF_MARC_ENABLED              = booleanPreferencesKey("marc_enabled")              // default false
+private val PREF_METROLINK_ENABLED         = booleanPreferencesKey("metrolink_enabled")         // default false
 private val PREF_USER_NAME                 = stringPreferencesKey("user_name")                    // default "Railfan"
 private val PREF_DECODE_COUNT              = intPreferencesKey("decode_count")
 private val PREF_LOCO_COUNT               = intPreferencesKey("loco_id_count")
 private val PREF_PHOTO_COUNT              = intPreferencesKey("photo_tag_count")
 private val PREF_DECODED_RAILROADS        = stringSetPreferencesKey("decoded_railroads")
+// ── Review-prompt guards ──────────────────────────────────────────────────────
+/** Set to true once we've fired the first-data review prompt so it never repeats. */
+private val PREF_REVIEW_FIRST_DATA_DONE  = booleanPreferencesKey("review_first_data_done")
+/** Set to true once we've fired the trial-end review prompt so it never repeats. */
+private val PREF_REVIEW_TRIAL_END_DONE   = booleanPreferencesKey("review_trial_end_done")
+/** Epoch-ms of the last background-exit review prompt; limited to once per 30 days. */
+private val PREF_REVIEW_LAST_EXIT_MS     = longPreferencesKey("review_last_exit_ms")
+private const val REVIEW_EXIT_COOLDOWN_MS = 30L * 24 * 60 * 60 * 1_000L
 private val PREF_ALERT_RARE_LOCO   = booleanPreferencesKey("alert_rare_loco")
 private val PREF_ALERT_HOT_TRAIN   = booleanPreferencesKey("alert_hot_train")
 private val PREF_ALERT_HIGH_SPEED  = booleanPreferencesKey("alert_high_speed")
 private val PREF_ALERT_SCANNER     = booleanPreferencesKey("alert_scanner")
 private val PREF_ALERT_APPROACHING = booleanPreferencesKey("alert_approaching")
-private val PREF_ALERT_HERITAGE    = booleanPreferencesKey("alert_heritage")
+private val PREF_ALERT_HERITAGE     = booleanPreferencesKey("alert_heritage")
+private val PREF_ALERT_GOLDEN_HOUR  = booleanPreferencesKey("alert_golden_hour")
+
+private val PREF_FAVORITE_FEEDS = stringSetPreferencesKey("favorite_scanner_feeds")
+
+// ── Trip / trail DataStore keys ───────────────────────────────────────────────
+/** ID of any in-progress trip — persisted so it survives app kills. */
+private val PREF_ACTIVE_TRIP_ID = stringPreferencesKey("active_trip_id")
+/** Epoch-ms of the last cloud waypoint write per trainId — stored as "id:ms,id:ms,…" */
+private val PREF_CLOUD_WRITE_CACHE = stringPreferencesKey("cloud_write_cache")
 
 private val EARNED_IDS_KEY = stringSetPreferencesKey("earned_ids")
 private val VISITED_YARDS_KEY = stringSetPreferencesKey("visited_yards")
@@ -85,7 +109,11 @@ private val BASE_ACHIEVEMENTS = listOf(
     Achievement("a14", "Loco Expert",        "AI-identify 10 locomotives",                    "🏆", false, null),
     Achievement("a15", "Snapshot",           "Tag your first railfan photo",                  "📷", false, null),
     Achievement("a16", "Photo Journalist",   "Tag 10 railfan photos",                         "🎞", false, null),
-    Achievement("a17", "Network Spotter",    "Decode symbols from 3 different railroads",     "🗺", false, null)
+    Achievement("a17", "Network Spotter",    "Decode symbols from 3 different railroads",     "🗺", false, null),
+    Achievement("a18", "First Mile",         "Complete your first train trip",                 "🎫", false, null),
+    Achievement("a19", "Century Rider",      "Log 100 miles of train travel",                  "💺", false, null),
+    Achievement("a20", "Night Train",        "Complete a trip that starts after 9 PM",         "🌙", false, null),
+    Achievement("a21", "Cross-Country",      "Log 500 miles of train travel",                  "🗾", false, null)
 )
 
 class RailFanViewModel(application: Application) : AndroidViewModel(application) {
@@ -140,6 +168,18 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _soundTransitEnabled            = MutableStateFlow(false)
     val soundTransitEnabled: StateFlow<Boolean> = _soundTransitEnabled.asStateFlow()
 
+    private val _njtEnabled            = MutableStateFlow(false)
+    val njtEnabled: StateFlow<Boolean> = _njtEnabled.asStateFlow()
+
+    private val _vreEnabled            = MutableStateFlow(false)
+    val vreEnabled: StateFlow<Boolean> = _vreEnabled.asStateFlow()
+
+    private val _marcEnabled            = MutableStateFlow(false)
+    val marcEnabled: StateFlow<Boolean> = _marcEnabled.asStateFlow()
+
+    private val _metrolinkEnabled            = MutableStateFlow(false)
+    val metrolinkEnabled: StateFlow<Boolean> = _metrolinkEnabled.asStateFlow()
+
     private val _userName            = MutableStateFlow("Railfan")
     val userName: StateFlow<String>  = _userName.asStateFlow()
 
@@ -175,6 +215,10 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _mtaMetroNorthEnabled.value  = prefs[PREF_MTA_METRO_NORTH_ENABLED]    ?: false
             _caltrainEnabled.value       = prefs[PREF_CALTRAIN_ENABLED]           ?: false
             _soundTransitEnabled.value   = prefs[PREF_SOUND_TRANSIT_ENABLED]      ?: false
+            _njtEnabled.value            = prefs[PREF_NJT_ENABLED]               ?: false
+            _vreEnabled.value            = prefs[PREF_VRE_ENABLED]               ?: false
+            _marcEnabled.value           = prefs[PREF_MARC_ENABLED]              ?: false
+            _metrolinkEnabled.value      = prefs[PREF_METROLINK_ENABLED]         ?: false
             _userName.value              = prefs[PREF_USER_NAME]                  ?: "Railfan"
             _alertRareLoco.value         = prefs[PREF_ALERT_RARE_LOCO]            ?: true
             _alertHotTrain.value         = prefs[PREF_ALERT_HOT_TRAIN]            ?: true
@@ -182,6 +226,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _alertScanner.value          = prefs[PREF_ALERT_SCANNER]              ?: true
             _alertApproaching.value      = prefs[PREF_ALERT_APPROACHING]          ?: true
             _alertHeritage.value         = prefs[PREF_ALERT_HERITAGE]             ?: true
+            _alertGoldenHour.value       = prefs[PREF_ALERT_GOLDEN_HOUR]         ?: true
         }
     }
 
@@ -238,6 +283,23 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     fun saveSoundTransitEnabled(enabled: Boolean) {
         _soundTransitEnabled.value = enabled
         viewModelScope.launch { settingsStore.edit { it[PREF_SOUND_TRANSIT_ENABLED] = enabled } }
+    }
+
+    fun saveNjtEnabled(enabled: Boolean) {
+        _njtEnabled.value = enabled
+        viewModelScope.launch { settingsStore.edit { it[PREF_NJT_ENABLED] = enabled } }
+    }
+    fun saveVreEnabled(enabled: Boolean) {
+        _vreEnabled.value = enabled
+        viewModelScope.launch { settingsStore.edit { it[PREF_VRE_ENABLED] = enabled } }
+    }
+    fun saveMarcEnabled(enabled: Boolean) {
+        _marcEnabled.value = enabled
+        viewModelScope.launch { settingsStore.edit { it[PREF_MARC_ENABLED] = enabled } }
+    }
+    fun saveMetrolinkEnabled(enabled: Boolean) {
+        _metrolinkEnabled.value = enabled
+        viewModelScope.launch { settingsStore.edit { it[PREF_METROLINK_ENABLED] = enabled } }
     }
 
     fun saveReportRadius(miles: Double) {
@@ -302,6 +364,10 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _trainTrails = MutableStateFlow<Map<String, List<LatLng>>>(emptyMap())
     val trainTrails: StateFlow<Map<String, List<LatLng>>> = _trainTrails.asStateFlow()
 
+    // trainId → last 10 speed readings (mph), oldest first — used for sparkline
+    private val _speedHistory = MutableStateFlow<Map<String, List<Int>>>(emptyMap())
+    val speedHistory: StateFlow<Map<String, List<Int>>> = _speedHistory.asStateFlow()
+
     private val _selectedRailroad = MutableStateFlow<Railroad?>(null)
     val selectedRailroad: StateFlow<Railroad?> = _selectedRailroad.asStateFlow()
 
@@ -343,6 +409,10 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                     val metroNorthDeferred   = async { if (_mtaMetroNorthEnabled.value) repo.getMtaMetroNorthTrains(lat, lon, radius) else emptyList() }
                     val caltrainDeferred     = async { if (_caltrainEnabled.value)      repo.getCaltrainTrains(lat, lon, radius)      else emptyList() }
                     val soundTransitDeferred = async { if (_soundTransitEnabled.value)  repo.getSoundTransitTrains(lat, lon, radius)  else emptyList() }
+                    val njtDeferred          = async { if (_njtEnabled.value)           repo.getNjTransitTrains(lat, lon, radius)    else emptyList() }
+                    val vreDeferred          = async { if (_vreEnabled.value)           repo.getVreTrains(lat, lon, radius)          else emptyList() }
+                    val marcDeferred         = async { if (_marcEnabled.value)          repo.getMarcTrains(lat, lon, radius)         else emptyList() }
+                    val metrolinkDeferred    = async { if (_metrolinkEnabled.value)     repo.getMetrolinkTrains(lat, lon, radius)    else emptyList() }
 
                     amtrakDeferred.await() +
                         mbtaDeferred.await() +
@@ -351,7 +421,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                         lirrDeferred.await() +
                         metroNorthDeferred.await() +
                         caltrainDeferred.await() +
-                        soundTransitDeferred.await()
+                        soundTransitDeferred.await() +
+                        njtDeferred.await() +
+                        vreDeferred.await() +
+                        marcDeferred.await() +
+                        metrolinkDeferred.await()
                 }
 
                 _trains.value = all
@@ -368,8 +442,35 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                 // Drop trails for trains no longer in the feed
                 updatedTrails.keys.retainAll(all.map { it.id }.toSet())
                 _trainTrails.value = updatedTrails
+
+                // Speed history — append current speed, keep last 10 per train
+                val updatedSpeeds = _speedHistory.value.toMutableMap()
+                all.forEach { train ->
+                    val history = updatedSpeeds[train.id] ?: emptyList()
+                    updatedSpeeds[train.id] = (history + train.speedMph).takeLast(10)
+                }
+                updatedSpeeds.keys.retainAll(all.map { it.id }.toSet())
+                _speedHistory.value = updatedSpeeds
                 checkTrainAchievements(all)
                 checkApproachNotifications(all)
+                checkSavedLocationApproach(all)
+                all.forEach { maybeWriteTrailWaypoint(it) }
+                maybeAccumulateTripDistance(all)
+
+                // Push nearest train to home screen widget
+                val nearest = all.minByOrNull { it.etaMinutes ?: Int.MAX_VALUE }
+                    ?: all.firstOrNull()
+                if (nearest != null) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        com.railfancopilot.app.widget.WidgetUpdater.update(
+                            context  = getApplication(),
+                            symbol   = nearest.symbol,
+                            railroad = nearest.railroad.displayName,
+                            speedMph = nearest.speedMph,
+                            etaMin   = nearest.etaMinutes
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("RailFanVM", "Train fetch failed: ${e.message}", e)
                 _trainFetchError.value = "Couldn't load trains — check your connection"
@@ -469,6 +570,24 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         _activeChannelId.value = null
     }
 
+    // ── Favorite scanner feeds ────────────────────────────────────────────────
+
+    private val _favoriteFeedUrls = MutableStateFlow<Set<String>>(emptySet())
+    val favoriteFeedUrls: StateFlow<Set<String>> = _favoriteFeedUrls.asStateFlow()
+
+    fun toggleFavoriteFeed(url: String) {
+        val current = _favoriteFeedUrls.value.toMutableSet()
+        if (url in current) current.remove(url) else current.add(url)
+        _favoriteFeedUrls.value = current
+        viewModelScope.launch { settingsStore.edit { it[PREF_FAVORITE_FEEDS] = current } }
+    }
+
+    private fun loadFavoriteFeeds() {
+        viewModelScope.launch {
+            _favoriteFeedUrls.value = settingsStore.data.first()[PREF_FAVORITE_FEEDS] ?: emptySet()
+        }
+    }
+
     fun logTransmission(channelId: String, note: String, trainSymbol: String?) {
         val entry = Transcript(UUID.randomUUID().toString(), channelId, note, System.currentTimeMillis(), 1.0f, trainSymbol)
         _transcripts.value = (_transcripts.value + entry).takeLast(10)
@@ -507,6 +626,56 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     val requestInAppReview: StateFlow<Boolean> = _requestInAppReview.asStateFlow()
     fun consumeInAppReviewRequest() { _requestInAppReview.value = false }
 
+    /** Debug-only: force the review flow immediately, ignoring all guards. */
+    fun debugTriggerReview() { _requestInAppReview.value = true }
+
+    /**
+     * Call after the user's very first meaningful data entry (decode, loco ID, photo tag,
+     * or community report). Fires the review prompt exactly once, ever.
+     */
+    fun maybeRequestReviewFirstData() {
+        viewModelScope.launch {
+            val already = settingsStore.data.first()[PREF_REVIEW_FIRST_DATA_DONE] == true
+            if (!already) {
+                settingsStore.edit { it[PREF_REVIEW_FIRST_DATA_DONE] = true }
+                _requestInAppReview.value = true
+            }
+        }
+    }
+
+    /**
+     * Call when the 7-day trial expires. Fires the review prompt exactly once, ever.
+     * Should be observed externally (e.g. MainActivity) via [trialDaysLeft] transition.
+     */
+    fun maybeRequestReviewTrialEnd() {
+        viewModelScope.launch {
+            val already = settingsStore.data.first()[PREF_REVIEW_TRIAL_END_DONE] == true
+            if (!already) {
+                settingsStore.edit { it[PREF_REVIEW_TRIAL_END_DONE] = true }
+                _requestInAppReview.value = true
+            }
+        }
+    }
+
+    /**
+     * Call when the app moves to background (Activity.onStop). Fires at most once
+     * per [REVIEW_EXIT_COOLDOWN_MS] (30 days), and only after the user has entered
+     * at least one piece of data (so day-1 cold-launch doesn't prompt immediately).
+     */
+    fun maybeRequestReviewOnExit() {
+        viewModelScope.launch {
+            val prefs = settingsStore.data.first()
+            val hasData = (prefs[PREF_DECODE_COUNT] ?: 0) > 0 ||
+                          (prefs[PREF_LOCO_COUNT]   ?: 0) > 0 ||
+                          (prefs[PREF_PHOTO_COUNT]  ?: 0) > 0
+            if (!hasData) return@launch
+            val lastMs = prefs[PREF_REVIEW_LAST_EXIT_MS] ?: 0L
+            if (System.currentTimeMillis() - lastMs < REVIEW_EXIT_COOLDOWN_MS) return@launch
+            settingsStore.edit { it[PREF_REVIEW_LAST_EXIT_MS] = System.currentTimeMillis() }
+            _requestInAppReview.value = true
+        }
+    }
+
     fun decodeSymbol(symbol: String) {
         if (symbol.isBlank()) return
         decodeJob?.cancel()   // cancel any in-flight request before starting a new one
@@ -533,6 +702,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                     settingsStore.edit { prefs ->
                         val newCount = (prefs[PREF_DECODE_COUNT] ?: 0) + 1
                         prefs[PREF_DECODE_COUNT] = newCount
+                        if (newCount == 1)                   maybeRequestReviewFirstData()
                         if (newCount == 5 || newCount == 25) _requestInAppReview.value = true
                         if (newCount == 5)  unlockAchievement("a9")
                         if (newCount == 25) unlockAchievement("a10")
@@ -581,7 +751,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                 _userLocation.value?.let { loc ->
                     val sun = repo.calculateSunInfo(loc.latitude, loc.longitude)
                     _sunInfo.value = sun
-                    if (sun.isGoldenHour && !wasGoldenHour) {
+                    if (sun.isGoldenHour && !wasGoldenHour && _alertGoldenHour.value) {
                         val notifMgr = getApplication<Application>()
                             .getSystemService(NotificationManager::class.java)
                         val label = if (sun.elevationDegrees > 0) "Sunrise" else "Sunset"
@@ -610,7 +780,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             settingsStore.edit { prefs ->
                 val newCount = (prefs[PREF_PHOTO_COUNT] ?: 0) + 1
                 prefs[PREF_PHOTO_COUNT] = newCount
-                if (newCount == 1)  unlockAchievement("a15")
+                if (newCount == 1)  { unlockAchievement("a15"); maybeRequestReviewFirstData() }
                 if (newCount == 10) unlockAchievement("a16")
             }
         }
@@ -665,7 +835,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                     settingsStore.edit { prefs ->
                         val newCount = (prefs[PREF_LOCO_COUNT] ?: 0) + 1
                         prefs[PREF_LOCO_COUNT] = newCount
-                        if (newCount == 1)  unlockAchievement("a13")
+                        if (newCount == 1)  { unlockAchievement("a13"); maybeRequestReviewFirstData() }
                         if (newCount == 10) unlockAchievement("a14")
                     }
                 }.onFailure {
@@ -769,6 +939,8 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     ) {
         viewModelScope.launch {
             repo.addReport(lat, lon, text, trainSymbol, railroad, tags, localPhotoPath, _userName.value, consist, weather, locationName)
+            // First sighting posted — good moment to ask for a review
+            if (communityReports.value.isEmpty()) maybeRequestReviewFirstData()
         }
     }
 
@@ -842,12 +1014,16 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _alertHeritage   = MutableStateFlow(true)
     val alertHeritage: StateFlow<Boolean>   = _alertHeritage.asStateFlow()
 
+    private val _alertGoldenHour = MutableStateFlow(true)
+    val alertGoldenHour: StateFlow<Boolean> = _alertGoldenHour.asStateFlow()
+
     fun setAlertRareLoco(on: Boolean)   { _alertRareLoco.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_RARE_LOCO]   = on } } }
     fun setAlertHotTrain(on: Boolean)   { _alertHotTrain.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HOT_TRAIN]   = on } } }
     fun setAlertHighSpeed(on: Boolean)  { _alertHighSpeed.value = on;  viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HIGH_SPEED]  = on } } }
     fun setAlertScanner(on: Boolean)    { _alertScanner.value = on;    viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_SCANNER]     = on } } }
     fun setAlertApproaching(on: Boolean){ _alertApproaching.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_APPROACHING] = on } } }
     fun setAlertHeritage(on: Boolean)   { _alertHeritage.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HERITAGE] = on } } }
+    fun setAlertGoldenHour(on: Boolean) { _alertGoldenHour.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_GOLDEN_HOUR] = on } } }
 
     // Tracks which Firestore alert IDs have already been merged so we don't
     // re-fire the in-app banner on every snapshot refresh.
@@ -1098,6 +1274,424 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { repo.deleteLocation(location) }
     }
 
+    // ── Timetable ─────────────────────────────────────────────────────────────
+
+    private val _timetable        = MutableStateFlow<List<TimetableStop>>(emptyList())
+    val timetable: StateFlow<List<TimetableStop>> = _timetable.asStateFlow()
+
+    private val _timetableLoading = MutableStateFlow(false)
+    val timetableLoading: StateFlow<Boolean> = _timetableLoading.asStateFlow()
+
+    private val _timetableError   = MutableStateFlow<String?>(null)
+    val timetableError: StateFlow<String?> = _timetableError.asStateFlow()
+
+    private val timetableGson = com.google.gson.Gson()
+
+    /**
+     * Load the timetable for [train].  Only Amtrak trains have a public per-train
+     * endpoint; for all other railroads a user-facing message is shown.
+     *
+     * Cache hierarchy:
+     *  1. Room DB (24 h TTL) — survives app kills, works fully offline
+     *  2. Network fetch — writes back to Room on success
+     */
+    fun loadTimetable(train: TrainLocation) {
+        _timetableError.value = null
+
+        if (train.railroad != Railroad.AMTRAK) {
+            _timetable.value = emptyList()
+            _timetableError.value = "Timetables are currently available for Amtrak only"
+            return
+        }
+
+        val trainNum = train.symbol.substringAfterLast("#").trim()
+            .takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
+            ?: run {
+                _timetableError.value = "Could not determine train number from \"${train.symbol}\""
+                return
+            }
+
+        viewModelScope.launch {
+            _timetableLoading.value = true
+            try {
+                // 1. Check Room cache
+                val cached = withContext(Dispatchers.IO) { repo.getTimetableCache(train.id) }
+                if (cached != null &&
+                    System.currentTimeMillis() - cached.fetchedMs < TIMETABLE_CACHE_TTL_MS) {
+                    val stops = timetableGson.fromJson(
+                        cached.stopsJson,
+                        Array<TimetableStop>::class.java
+                    ).toList()
+                    _timetable.value = stops
+                    return@launch
+                }
+
+                // 2. Fetch from network
+                val stops = withContext(Dispatchers.IO) { repo.getTrainTimetable(trainNum) }
+                if (stops.isEmpty()) {
+                    _timetableError.value = "No timetable data available for train #$trainNum"
+                    // Surface stale cache if available
+                    cached?.let {
+                        _timetable.value = timetableGson.fromJson(
+                            it.stopsJson, Array<TimetableStop>::class.java
+                        ).toList()
+                    }
+                } else {
+                    _timetable.value = stops
+                    withContext(Dispatchers.IO) {
+                        repo.saveTimetableCache(
+                            TimetableCacheEntry(
+                                trainId   = train.id,
+                                stopsJson = timetableGson.toJson(stops),
+                                fetchedMs = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _timetableError.value = "Couldn't load timetable — check your connection"
+                // Try stale cache as fallback
+                withContext(Dispatchers.IO) { repo.getTimetableCache(train.id) }?.let { stale ->
+                    _timetable.value = timetableGson.fromJson(
+                        stale.stopsJson, Array<TimetableStop>::class.java
+                    ).toList()
+                    _timetableError.value = "Showing cached data (offline)"
+                }
+            } finally {
+                _timetableLoading.value = false
+            }
+        }
+    }
+
+    fun clearTimetable() {
+        _timetable.value = emptyList()
+        _timetableError.value = null
+    }
+
+    // ── Station departures board ──────────────────────────────────────────────
+
+    data class StationDeparture(
+        val trainSymbol: String,
+        val routeName: String,
+        val stops: List<TimetableStop>
+    )
+
+    private val _stationDepartures        = MutableStateFlow<List<StationDeparture>>(emptyList())
+    val stationDepartures: StateFlow<List<StationDeparture>> = _stationDepartures.asStateFlow()
+
+    private val _stationDeparturesLoading = MutableStateFlow(false)
+    val stationDeparturesLoading: StateFlow<Boolean> = _stationDeparturesLoading.asStateFlow()
+
+    private val _stationDeparturesError   = MutableStateFlow<String?>(null)
+    val stationDeparturesError: StateFlow<String?> = _stationDeparturesError.asStateFlow()
+
+    fun loadStationDepartures(stationCode: String) {
+        if (stationCode.isBlank()) return
+        _stationDeparturesError.value = null
+        viewModelScope.launch {
+            _stationDeparturesLoading.value = true
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    repo.getStationDepartures(stationCode.trim().uppercase())
+                }
+                if (results.isEmpty()) {
+                    _stationDeparturesError.value = "No trains found for station \"${stationCode.uppercase()}\""
+                } else {
+                    _stationDepartures.value = results.map {
+                        StationDeparture(it.first, it.second, it.third)
+                    }
+                }
+            } catch (_: Exception) {
+                _stationDeparturesError.value = "Couldn't load departures — check your connection"
+            } finally {
+                _stationDeparturesLoading.value = false
+            }
+        }
+    }
+
+    fun clearStationDepartures() {
+        _stationDepartures.value = emptyList()
+        _stationDeparturesError.value = null
+    }
+
+    // ── Locomotive number lookup ──────────────────────────────────────────────
+
+    private val _locoNumberResult  = MutableStateFlow<String?>(null)
+    val locoNumberResult: StateFlow<String?> = _locoNumberResult.asStateFlow()
+
+    private val _locoNumberLoading = MutableStateFlow(false)
+    val locoNumberLoading: StateFlow<Boolean> = _locoNumberLoading.asStateFlow()
+
+    private val _locoNumberError   = MutableStateFlow<String?>(null)
+    val locoNumberError: StateFlow<String?> = _locoNumberError.asStateFlow()
+
+    private var locoNumberJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Looks up a locomotive by road number (e.g. "BNSF 3751") using Claude.
+     * Unlike [identifyLocomotive] this is text-only — no image required.
+     */
+    fun lookupLocoNumber(roadNumber: String) {
+        locoNumberJob?.cancel()
+        locoNumberJob = viewModelScope.launch {
+            _locoNumberLoading.value = true
+            _locoNumberError.value  = null
+            try {
+                val result = repo.lookupLocoNumber(roadNumber)
+                result.onSuccess  { _locoNumberResult.value = it }
+                     .onFailure  { _locoNumberError.value  = "Lookup failed — check your connection" }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { _locoNumberError.value = "Lookup failed — check your connection" }
+            finally { _locoNumberLoading.value = false }
+        }
+    }
+
+    fun clearLocoNumberResult() { _locoNumberResult.value = null; _locoNumberError.value = null }
+    fun cancelLocoNumberLookup() { locoNumberJob?.cancel(); _locoNumberLoading.value = false }
+
+    // ── 14-day train trail persistence ───────────────────────────────────────
+
+    /**
+     * In-memory cache of the last position we wrote to Room + Firestore for each
+     * trainId.  Used to gate writes by MIN_WRITE_METERS so we don't thrash the DB.
+     */
+    private val lastWrittenPosition = mutableMapOf<String, LatLng>()
+
+    /** Minimum movement (metres) before we persist a new trail waypoint. */
+    private val MIN_WRITE_METERS = 1_000.0   // ~0.6 miles — local Room
+    // Cloud threshold is FirestoreTrailsRepo.MIN_CLOUD_WRITE_METERS (~2 miles)
+
+    /**
+     * For a given [trainId], load the last 14 days of persisted waypoints from
+     * Room and return them as an ordered list of [LatLng].  Called when the user
+     * taps a train marker to show the full trail in the detail sheet.
+     */
+    suspend fun loadLocalTrail(trainId: String): List<LatLng> =
+        withContext(Dispatchers.IO) {
+            val since = System.currentTimeMillis() - TRAIL_RETENTION_MS
+            repo.getTrailWaypointsSince(trainId, since).map { LatLng(it.latitude, it.longitude) }
+        }
+
+    /**
+     * Load the cloud (Firestore) trail for [trainId] and return it merged with the
+     * local Room trail, de-duplicated and sorted oldest-first.
+     */
+    suspend fun loadCloudTrail(trainId: String): List<LatLng> =
+        withContext(Dispatchers.IO) {
+            val cloudPoints = FirestoreTrailsRepo.getTrail(trainId)
+            val localPoints = loadLocalTrail(trainId)
+            // Merge: cloud may have points from other devices; local has this session
+            (cloudPoints + localPoints)
+                .distinctBy { "${it.latitude.toBits()}_${it.longitude.toBits()}" }
+        }
+
+    /**
+     * Called from [refreshTrains] for each live train.  Persists a waypoint to
+     * Room when the train moves > [MIN_WRITE_METERS], and a cloud waypoint when
+     * it moves > [FirestoreTrailsRepo.MIN_CLOUD_WRITE_METERS].
+     */
+    private fun maybeWriteTrailWaypoint(train: TrainLocation) {
+        val newPos = LatLng(train.latitude, train.longitude)
+        val lastPos = lastWrittenPosition[train.id]
+
+        val movedMeters = if (lastPos == null) Double.MAX_VALUE else {
+            val buf = FloatArray(1)
+            Location.distanceBetween(lastPos.latitude, lastPos.longitude,
+                newPos.latitude, newPos.longitude, buf)
+            buf[0].toDouble()
+        }
+
+        if (movedMeters < MIN_WRITE_METERS) return
+        lastWrittenPosition[train.id] = newPos
+
+        val waypoint = TrainTrailWaypoint(
+            id          = UUID.randomUUID().toString(),
+            trainId     = train.id,
+            trainSymbol = train.symbol,
+            railroad    = train.railroad.name,
+            latitude    = train.latitude,
+            longitude   = train.longitude,
+            speedMph    = train.speedMph,
+            timestampMs = System.currentTimeMillis()
+        )
+
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.insertTrailWaypoint(waypoint)
+            // Cloud write only when train moves > MIN_CLOUD_WRITE_METERS
+            if (movedMeters >= FirestoreTrailsRepo.MIN_CLOUD_WRITE_METERS) {
+                FirestoreTrailsRepo.writeWaypoint(waypoint)
+            }
+        }
+    }
+
+    /** Prune local DB waypoints older than 14 days.  Called once on startup. */
+    private fun pruneStaleTrailWaypoints() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val cutoff = System.currentTimeMillis() - TRAIL_RETENTION_MS
+            repo.pruneTrailWaypointsOlderThan(cutoff)
+        }
+    }
+
+    /**
+     * Seed [_trainTrails] from Room on startup so the map shows historical
+     * polylines immediately — before the first live-data refresh arrives.
+     * Loads the last 24 h (enough for a useful visual) rather than the full
+     * 14 days so we don't allocate thousands of LatLng objects at boot.
+     */
+    private fun loadPersistedTrailsFromRoom() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val since = System.currentTimeMillis() - 24L * 60 * 60 * 1_000L  // last 24 h
+            // We don't know which trainIds exist in advance — query all recent waypoints
+            val allWaypoints = repo.getAllTrailWaypointsSince(since)
+            val grouped = allWaypoints
+                .groupBy { it.trainId }
+                .mapValues { (_, pts) -> pts.map { LatLng(it.latitude, it.longitude) } }
+            if (grouped.isNotEmpty()) {
+                _trainTrails.value = _trainTrails.value + grouped
+            }
+        }
+    }
+
+    // ── Trip logging ──────────────────────────────────────────────────────────
+
+    val tripLogs: StateFlow<List<TripLog>> =
+        repo.getTripLogsFlow()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _activeTrip = MutableStateFlow<TripLog?>(null)
+    val activeTrip: StateFlow<TripLog?> = _activeTrip.asStateFlow()
+
+    /** Last known position while a trip is active — used to accumulate distance. */
+    private var tripLastPosition: LatLng? = null
+
+    data class TripStats(
+        val totalMiles: Double = 0.0,
+        val completedTrips: Int = 0
+    ) {
+        val totalHours: Double get() = 0.0   // computed from tripLogs in UI
+    }
+
+    private val _tripStats = MutableStateFlow(TripStats())
+    val tripStats: StateFlow<TripStats> = _tripStats.asStateFlow()
+
+    private fun loadTripStats() {
+        viewModelScope.launch {
+            val miles = repo.totalTripMiles()
+            val count = repo.completedTripCount()
+            _tripStats.value = TripStats(miles, count)
+        }
+    }
+
+    /** Restore any in-progress trip that survived an app kill. */
+    private fun restoreActiveTrip() {
+        viewModelScope.launch {
+            val active = repo.getActiveTrip()
+            if (active != null) {
+                _activeTrip.value = active
+                tripLastPosition = null   // will re-acquire from next GPS fix
+            }
+        }
+    }
+
+    /**
+     * Start logging a trip on [train].  If a trip is already active it is
+     * silently ignored (the user must end the current trip first).
+     */
+    fun startTrip(train: TrainLocation, boardingStation: String? = null) {
+        if (_activeTrip.value != null) return
+        val trip = TripLog(
+            id              = UUID.randomUUID().toString(),
+            trainId         = train.id,
+            trainSymbol     = train.symbol,
+            railroad        = train.railroad.name,
+            startMs         = System.currentTimeMillis(),
+            boardingStation = boardingStation?.trim()?.takeIf { it.isNotBlank() }
+        )
+        viewModelScope.launch {
+            repo.insertTrip(trip)
+            _activeTrip.value = trip
+            tripLastPosition  = LatLng(train.latitude, train.longitude)
+        }
+    }
+
+    /**
+     * End the active trip, save final distance/duration, and optionally sync
+     * to Firestore so the log survives a reinstall.
+     */
+    fun endTrip(notes: String? = null, alightingStation: String? = null) {
+        val current = _activeTrip.value ?: return
+        val finished = current.copy(
+            endMs            = System.currentTimeMillis(),
+            notes            = notes ?: current.notes,
+            alightingStation = alightingStation ?: current.alightingStation
+        )
+        viewModelScope.launch {
+            repo.updateTrip(finished)
+            _activeTrip.value = null
+            tripLastPosition  = null
+            loadTripStats()
+
+            // Trip achievements
+            unlockAchievement("a18")   // First Mile — always on first completed trip
+            val totalMiles = repo.totalTripMiles()
+            if (totalMiles >= 100.0) unlockAchievement("a19")
+            if (totalMiles >= 500.0) unlockAchievement("a21")
+            val startHour = Calendar.getInstance().apply { timeInMillis = finished.startMs }
+                .get(Calendar.HOUR_OF_DAY)
+            if (startHour >= 21 || startHour < 5) unlockAchievement("a20")
+
+            // Sync to Firestore under the user's anonymous UID
+            val uid = _currentUserId.value
+            if (uid != null) {
+                FirestoreTrailsRepo.syncCompletedTrip(uid, finished.id, mapOf(
+                    "trainSymbol"      to finished.trainSymbol,
+                    "railroad"         to finished.railroad,
+                    "startMs"          to finished.startMs,
+                    "endMs"            to finished.endMs,
+                    "distanceMiles"    to finished.distanceMiles,
+                    "durationMinutes"  to finished.durationMinutes,
+                    "boardingStation"  to (finished.boardingStation ?: ""),
+                    "alightingStation" to (finished.alightingStation ?: ""),
+                    "notes"            to (finished.notes ?: "")
+                ))
+            }
+        }
+    }
+
+    fun deleteTrip(trip: TripLog) {
+        viewModelScope.launch {
+            repo.deleteTrip(trip)
+            if (_activeTrip.value?.id == trip.id) {
+                _activeTrip.value = null
+                tripLastPosition  = null
+            }
+            loadTripStats()
+        }
+    }
+
+    /**
+     * Called from [refreshTrains] each cycle.  If a trip is active and the
+     * tracked train is in the live feed, accumulate distance.
+     */
+    private fun maybeAccumulateTripDistance(trains: List<TrainLocation>) {
+        val trip = _activeTrip.value ?: return
+        val train = trains.firstOrNull { it.id == trip.trainId } ?: return
+        val newPos = LatLng(train.latitude, train.longitude)
+        val last   = tripLastPosition
+        if (last != null) {
+            val buf = FloatArray(1)
+            Location.distanceBetween(last.latitude, last.longitude,
+                newPos.latitude, newPos.longitude, buf)
+            val addedMiles = buf[0] / 1609.34
+            if (addedMiles > 0.05) {   // ignore jitter < 0.05 mi
+                val updated = trip.copy(distanceMiles = trip.distanceMiles + addedMiles)
+                _activeTrip.value = updated
+                viewModelScope.launch { repo.updateTrip(updated) }
+            }
+        }
+        tripLastPosition = newPos
+    }
+
     // ── Achievements ─────────────────────────────────────────────────────────
 
     private val _achievements = MutableStateFlow(BASE_ACHIEVEMENTS)
@@ -1232,6 +1826,70 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
 
         // Reset tracking once a train has passed (no longer in approaching list)
         notifiedTrainIds.retainAll(approaching.map { it.id }.toSet())
+    }
+
+    // ── Saved-location approach alerts ────────────────────────────────────────
+    // Fires once per (trainId, locationId) pair when a train enters within
+    // SAVED_LOC_ALERT_RADIUS_MILES of any saved photography location.
+    // The key is cleared when the train leaves the radius, allowing re-alert
+    // on future visits.
+
+    private val SAVED_LOC_ALERT_RADIUS_MILES = 25.0
+    private val notifiedSavedLocPairs = Collections.synchronizedSet(mutableSetOf<String>())
+
+    private fun checkSavedLocationApproach(trains: List<TrainLocation>) {
+        val locations = savedLocations.value
+        if (locations.isEmpty() || trains.isEmpty()) return
+        val notifMgr = getApplication<Application>()
+            .getSystemService(NotificationManager::class.java)
+        val distBuf = FloatArray(1)
+
+        val activePairs = mutableSetOf<String>()
+
+        locations.forEach { loc ->
+            trains.forEach { train ->
+                Location.distanceBetween(
+                    loc.latitude, loc.longitude,
+                    train.latitude, train.longitude,
+                    distBuf
+                )
+                val distMiles = distBuf[0] / 1609.34
+                val pairKey = "${train.id}_${loc.id}"
+                if (distMiles <= SAVED_LOC_ALERT_RADIUS_MILES) {
+                    activePairs.add(pairKey)
+                    if (pairKey !in notifiedSavedLocPairs) {
+                        notifiedSavedLocPairs.add(pairKey)
+                        val distLabel = if (distMiles < 1.0)
+                            "< 1 mile away"
+                        else
+                            "${"%.0f".format(distMiles)} miles away"
+                        val notif = NotificationCompat.Builder(getApplication(), GEOFENCE_CHANNEL)
+                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                            .setContentTitle("Train near ${loc.name}")
+                            .setContentText("${train.symbol} · ${train.railroad.displayName} · $distLabel")
+                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                            .setAutoCancel(true)
+                            .build()
+                        notifMgr.notify("savedloc_${pairKey}".hashCode(), notif)
+                        if (_alertApproaching.value) {
+                            fireRailAlert(RailAlert(
+                                id          = "savedloc_$pairKey",
+                                type        = RailAlertType.TRAIN_APPROACHING,
+                                title       = "Train near ${loc.name}",
+                                message     = "${train.symbol} · ${train.railroad.displayName} · $distLabel",
+                                timestampMs = System.currentTimeMillis(),
+                                latitude    = train.latitude,
+                                longitude   = train.longitude,
+                                trainSymbol = train.symbol
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Clear pairs where the train has moved away so future entries re-alert
+        notifiedSavedLocPairs.retainAll(activePairs)
     }
 
     // Called after each train list refresh
@@ -1441,6 +2099,14 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         startSunRefreshLoop()
         initAuth()
         viewModelScope.launch { communityReports.collect { checkCommunityReportsForAlerts(it) } }
+        pruneStaleTrailWaypoints()
+        loadPersistedTrailsFromRoom()
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.pruneTimetableCache(System.currentTimeMillis() - TIMETABLE_CACHE_TTL_MS)
+        }
+        restoreActiveTrip()
+        loadTripStats()
+        loadFavoriteFeeds()
         // Load symbol database off the main thread
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             com.railfancopilot.app.utils.SymbolDatabase.load(getApplication())
