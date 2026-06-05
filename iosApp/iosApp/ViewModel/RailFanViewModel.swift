@@ -1,5 +1,7 @@
 import Foundation
 import CoreLocation
+import StoreKit
+import UIKit
 import shared   // KMP XCFramework
 
 @MainActor
@@ -17,6 +19,8 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var trains: [TrainLocation] = []
     @Published var isLoadingTrains = false
     @Published var selectedRailroad: String? = nil  // Railroad.name or nil = all
+    /// trainId → last 10 speed readings (mph), oldest first — used for sparkline
+    @Published var speedHistory: [String: [Int]] = [:]
 
     // ── Scanner ───────────────────────────────────────────────────────────────
     @Published var radioChannels: [RadioChannel] = []
@@ -60,6 +64,40 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         let arr = UserDefaults.standard.stringArray(forKey: "favoriteFeedUrls") ?? []
         return Set(arr)
     }()
+
+    // ── Community reports (for map pins) ─────────────────────────────────────
+    @Published var communityReports: [CommunityReportSwift] = []
+
+    // ── In-app review ─────────────────────────────────────────────────────────
+    private var reviewPromptedFirstData = UserDefaults.standard.bool(forKey: "reviewFirstDataDone")
+    private var reviewPromptedTrialEnd  = UserDefaults.standard.bool(forKey: "reviewTrialEndDone")
+    private var lastReviewExitMs        = UserDefaults.standard.double(forKey: "reviewLastExitMs")
+
+    func maybeRequestReviewFirstData() {
+        guard !reviewPromptedFirstData else { return }
+        reviewPromptedFirstData = true
+        UserDefaults.standard.set(true, forKey: "reviewFirstDataDone")
+        requestReview()
+    }
+    func maybeRequestReviewTrialEnd() {
+        guard !reviewPromptedTrialEnd, !isPurchased else { return }
+        reviewPromptedTrialEnd = true
+        UserDefaults.standard.set(true, forKey: "reviewTrialEndDone")
+        requestReview()
+    }
+    func maybeRequestReviewOnBackground() {
+        let now = Date().timeIntervalSince1970 * 1000
+        let cooldown: Double = 30 * 24 * 60 * 60 * 1000
+        guard now - lastReviewExitMs >= cooldown else { return }
+        lastReviewExitMs = now
+        UserDefaults.standard.set(now, forKey: "reviewLastExitMs")
+        requestReview()
+    }
+    @MainActor private func requestReview() {
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else { return }
+        SKStoreReviewController.requestReview(in: scene)
+    }
 
     // ── Loco number lookup ────────────────────────────────────────────────────
     @Published var locoNumberResult: String? = nil
@@ -153,9 +191,22 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             onSuccess: { [weak self] trains in
                 guard let self else { return }
                 Task { @MainActor in
-                    self.trains = trains as? [TrainLocation] ?? []
+                    let loaded = trains as? [TrainLocation] ?? []
+                    self.trains = loaded
                     self.isLoadingTrains = false
                     self.checkApproachNotifications()
+                    // Accumulate speed history for sparkline (last 10 readings per train)
+                    var updated = self.speedHistory
+                    for t in loaded {
+                        var hist = updated[t.id] ?? []
+                        hist.append(Int(t.speedMph))
+                        updated[t.id] = Array(hist.suffix(10))
+                    }
+                    updated.keys.filter { id in !loaded.contains { $0.id == id } }
+                        .forEach { updated.removeValue(forKey: $0) }
+                    self.speedHistory = updated
+                    // Accumulate active trip distance
+                    self.accumulateTripDistance()
                 }
             },
             onError: { [weak self] _ in
@@ -426,6 +477,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         activeTrip = nil
         tripLastLocation = nil
         saveTrips()
+        maybeRequestReviewFirstData()
     }
 
     func deleteTrip(id: String) {
@@ -511,6 +563,17 @@ private extension String {
 }
 
 // ── Swift-side model types (not in KMP) ───────────────────────────────────────
+
+struct CommunityReportSwift: Identifiable {
+    let id: String
+    let latitude: Double
+    let longitude: Double
+    let text: String
+    let trainSymbol: String?
+    let railroad: String?
+    let userName: String
+    let timestampMs: Int64
+}
 
 struct TripLogSwift: Codable, Identifiable {
     let id: String

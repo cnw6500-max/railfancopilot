@@ -3,6 +3,9 @@ import SwiftUI
 // Mirrors Android EncyclopediaScreen — DieselShop.us links + Signal Systems reference
 struct EncyclopediaView: View {
     @State private var searchText = ""
+    @State private var rrFilter: String? = nil   // short name of selected railroad filter
+
+    private let railroadFilters = ["BNSF","UP","CSX","NS","CN","CPKC","AMTK","METRA","LIRR","MNR","MBTA","SEPTA","CT"]
 
     private let rosterLinks: [(name: String, short: String, url: String, color: Color)] = [
         ("BNSF Railway",                 "BNSF",  "https://www.dieselshop.us/BNSF.HTML",     Color(red: 1.0,  green: 0.4,  blue: 0.0)),
@@ -30,10 +33,12 @@ struct EncyclopediaView: View {
     ]
 
     var filteredLinks: [(name: String, short: String, url: String, color: Color)] {
-        guard !searchText.isEmpty else { return rosterLinks }
-        return rosterLinks.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.short.localizedCaseInsensitiveContains(searchText)
+        rosterLinks.filter {
+            let matchesSearch = searchText.isEmpty ||
+                $0.name.localizedCaseInsensitiveContains(searchText) ||
+                $0.short.localizedCaseInsensitiveContains(searchText)
+            let matchesRr = rrFilter == nil || $0.short == rrFilter
+            return matchesSearch && matchesRr
         }
     }
 
@@ -52,6 +57,23 @@ struct EncyclopediaView: View {
                                 .foregroundColor(.textPrimary)
                         }
                         .listRowBackground(Color.bgInput)
+                    }
+
+                    // Railroad filter chips
+                    Section {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                FilterChipView(label: "All", selected: rrFilter == nil) { rrFilter = nil }
+                                ForEach(railroadFilters, id: \.self) { rr in
+                                    FilterChipView(label: rr, selected: rrFilter == rr) {
+                                        rrFilter = rrFilter == rr ? nil : rr
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .listRowBackground(Color.bgPrimary)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                     }
 
                     // Signal Systems
