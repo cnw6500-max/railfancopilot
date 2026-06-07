@@ -66,6 +66,8 @@ android {
 }
 
 dependencies {
+    // Force fragment to latest to resolve Play Console SDK warning
+    implementation("androidx.fragment:fragment-ktx:1.8.6")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
