@@ -27,6 +27,11 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/railfan-release.jks
 
+      # ── Decode google-services.json (required by Firebase Gradle plugin) ─────
+      - name: Decode google-services.json
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/app/google-services.json
+
       # ── Write local.properties ────────────────────────────────────────────────
       - name: Write local.properties
         run: |
