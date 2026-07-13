@@ -434,3 +434,104 @@ exports.watchlistSightingAlert = functions.firestore
         await Promise.all(sends);
         return null;
     });
+
+// ── nearbySightingAlert ───────────────────────────────────────────────────────
+// Fires on every new sighting. Pushes to any opted-in user (nearbyAlertsEnabled
+// == true on their users/{uid} doc) whose last-known location is within their
+// own configured radius of the new sighting — the "anyone nearby just logged a
+// sighting" alert, distinct from heritageUnitAlert (rare-unit match) and
+// watchlistSightingAlert (specific symbol/number match).
+
+// Mirrors the Railroad enum in Models.kt. Sightings store whatever free text
+// the user typed in the "Railroad" field (not the enum code), so filter
+// matching has to be fuzzy — alias list per code, matched case-insensitively.
+const RAILROAD_ALIASES = {
+    BNSF: ['bnsf'],
+    UP: ['up', 'union pacific'],
+    CSX: ['csx'],
+    NS: ['ns', 'norfolk southern'],
+    CN: ['cn', 'canadian national'],
+    CP: ['cp', 'canadian pacific'],
+    AMTRAK: ['amtrak'],
+    KCS: ['kcs', 'kansas city southern'],
+    OTHER: [],
+};
+
+function railroadMatchesFilter(sightingRailroad, filterCodes) {
+    if (!filterCodes || filterCodes.length === 0) return true; // empty filter = all railroads
+    const rrLower = (sightingRailroad || '').toLowerCase().trim();
+    if (!rrLower) return false;
+    return filterCodes.some((code) => {
+        const aliases = RAILROAD_ALIASES[code] || [code.toLowerCase()];
+        return aliases.some((alias) => rrLower.includes(alias) || alias.includes(rrLower));
+    });
+}
+
+function haversineMiles(lat1, lon1, lat2, lon2) {
+    const R = 3958.8; // Earth radius in miles
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+exports.nearbySightingAlert = functions.firestore
+    .document('sightings/{sightingId}')
+    .onCreate(async (snap) => {
+        const data = snap.data();
+        const lat = data.latitude;
+        const lon = data.longitude;
+        if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+
+        const db = admin.firestore();
+        const messaging = admin.messaging();
+        const reporterUid = data.reporterUid || null;
+        const reporter = data.reporterName || 'A railfan';
+        const location = data.location || 'Unknown location';
+        const railroad = data.railroad || '';
+
+        const COOLDOWN_MS = 5 * 60 * 1000; // don't re-alert the same user more than once per 5 min
+        const now = Date.now();
+
+        const usersSnap = await db.collection('users')
+            .where('nearbyAlertsEnabled', '==', true)
+            .limit(1000)
+            .get();
+
+        const sends = [];
+        for (const doc of usersSnap.docs) {
+            if (doc.id === reporterUid) continue; // don't alert the reporter about their own sighting
+            const u = doc.data();
+            const token = u.fcmToken;
+            if (!token) continue;
+            if (typeof u.lastKnownLat !== 'number' || typeof u.lastKnownLon !== 'number') continue;
+            if (now - (u.lastNearbyAlertMs || 0) < COOLDOWN_MS) continue;
+
+            const railroadFilter = Array.isArray(u.nearbyAlertRailroads) ? u.nearbyAlertRailroads : [];
+            if (!railroadMatchesFilter(railroad, railroadFilter)) continue;
+
+            const radiusMiles = u.nearbyAlertRadiusMiles || 25;
+            const distMiles = haversineMiles(u.lastKnownLat, u.lastKnownLon, lat, lon);
+            if (distMiles > radiusMiles) continue;
+
+            const distLabel = distMiles < 1 ? 'less than a mile' : `${Math.round(distMiles)} mi`;
+            sends.push(
+                messaging.send({
+                    token,
+                    notification: {
+                        title: `🚆 Sighting nearby${railroad ? ' — ' + railroad : ''}`,
+                        body: `${reporter} spotted a train ${distLabel} away near ${location}`,
+                    },
+                    android: { priority: 'high', notification: { channelId: 'nearby_sighting_alerts' } },
+                    apns: { payload: { aps: { sound: 'default' } } },
+                })
+                    .then(() => db.collection('users').doc(doc.id).update({ lastNearbyAlertMs: now }))
+                    .catch(() => null)
+            );
+        }
+
+        await Promise.all(sends);
+        return null;
+    });

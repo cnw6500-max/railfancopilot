@@ -24,6 +24,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.railfancopilot.app.billing.ProRepository
 import com.railfancopilot.app.data.models.*
+import com.railfancopilot.shared.tutorial.TutorialRepository
+import com.railfancopilot.shared.tutorial.TutorialStep
 import com.railfancopilot.app.data.repository.FirestoreTrailsRepo
 import com.railfancopilot.app.data.repository.RailFanRepository
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +47,6 @@ private val PREF_TRAIN_RADIUS_MILES   = doublePreferencesKey("train_radius_miles
 private val PREF_APPROACH_ETA_MIN     = intPreferencesKey("approach_eta_min")            // default 14
 private val PREF_REPORT_RADIUS_MILES  = doublePreferencesKey("report_radius_miles")      // default 50
 private val PREF_RAIL_OVERLAY_DEFAULT = booleanPreferencesKey("rail_overlay_default")    // default true
-private val PREF_ONBOARDING_SHOWN     = booleanPreferencesKey("onboarding_shown")         // null = first launch
 private val PREF_MBTA_ENABLED              = booleanPreferencesKey("mbta_enabled")              // default false
 private val PREF_SEPTA_ENABLED             = booleanPreferencesKey("septa_enabled")             // default false
 private val PREF_METRA_ENABLED             = booleanPreferencesKey("metra_enabled")             // default false
@@ -77,6 +78,9 @@ private val PREF_ALERT_SCANNER     = booleanPreferencesKey("alert_scanner")
 private val PREF_ALERT_APPROACHING = booleanPreferencesKey("alert_approaching")
 private val PREF_ALERT_HERITAGE     = booleanPreferencesKey("alert_heritage")
 private val PREF_ALERT_GOLDEN_HOUR  = booleanPreferencesKey("alert_golden_hour")
+private val PREF_NEARBY_ALERTS_ENABLED   = booleanPreferencesKey("nearby_alerts_enabled")
+private val PREF_NEARBY_ALERT_RADIUS_MI  = doublePreferencesKey("nearby_alert_radius_mi")
+private val PREF_NEARBY_ALERT_RAILROADS  = stringSetPreferencesKey("nearby_alert_railroads")
 
 private val PREF_FAVORITE_FEEDS = stringSetPreferencesKey("favorite_scanner_feeds")
 
@@ -121,6 +125,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val repo = RailFanRepository(application)
     private val dataStore = application.achievementDataStore
     private val settingsStore = application.settingsDataStore
+    private val tutorialRepo = TutorialRepository()
 
     // ── Pro / billing ─────────────────────────────────────────────────────────
 
@@ -190,14 +195,23 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // ── Onboarding ────────────────────────────────────────────────────────────
-    // null = DataStore not yet read; false = first launch; true = already shown
+    // null = briefly before first read; false = first launch; true = already shown
 
-    val onboardingShown: StateFlow<Boolean?> = settingsStore.data
-        .map { it[PREF_ONBOARDING_SHOWN] }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _onboardingShown = MutableStateFlow<Boolean?>(null)
+    val onboardingShown: StateFlow<Boolean?> = _onboardingShown.asStateFlow()
+
+    private val _unseenTutorialSteps = MutableStateFlow<List<TutorialStep>>(emptyList())
+    val unseenTutorialSteps: StateFlow<List<TutorialStep>> = _unseenTutorialSteps.asStateFlow()
 
     fun markOnboardingShown() {
-        viewModelScope.launch { settingsStore.edit { it[PREF_ONBOARDING_SHOWN] = true } }
+        tutorialRepo.markOnboardingComplete()
+        _onboardingShown.value = true
+        _unseenTutorialSteps.value = emptyList()
+    }
+
+    fun markTutorialStepSeen(step: TutorialStep) {
+        tutorialRepo.markStepSeen(step)
+        _unseenTutorialSteps.value = tutorialRepo.unseenSteps()
     }
 
     private fun loadSettings() {
@@ -227,6 +241,9 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _alertApproaching.value      = prefs[PREF_ALERT_APPROACHING]          ?: true
             _alertHeritage.value         = prefs[PREF_ALERT_HERITAGE]             ?: true
             _alertGoldenHour.value       = prefs[PREF_ALERT_GOLDEN_HOUR]         ?: true
+            _nearbyAlertsEnabled.value   = prefs[PREF_NEARBY_ALERTS_ENABLED]     ?: false
+            _nearbyAlertRadiusMiles.value= prefs[PREF_NEARBY_ALERT_RADIUS_MI]    ?: 25.0
+            _nearbyAlertRailroads.value  = prefs[PREF_NEARBY_ALERT_RAILROADS]    ?: emptySet()
         }
     }
 
@@ -324,6 +341,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
         triggerGeofenceCheck(location)
         checkYardProximity(location)
+        syncLastKnownLocation(location)
     }
 
     private var fusedLocationClient: FusedLocationProviderClient? = null
@@ -953,6 +971,23 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { repo.deleteCommunityReport(reportId) }
     }
 
+    private val _isEditingReport = MutableStateFlow(false)
+    val isEditingReport: StateFlow<Boolean> = _isEditingReport.asStateFlow()
+
+    fun editReport(reportId: String, text: String, trainSymbol: String?, railroad: String?, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            _isEditingReport.value = true
+            try {
+                com.railfancopilot.app.data.repository.FirestoreCommunityRepo
+                    .updateSighting(reportId, text, trainSymbol, railroad)
+                onDone()
+            } catch (e: Exception) {
+                android.util.Log.e("RailFanVM", "editReport failed: ${e.message}", e)
+            }
+            _isEditingReport.value = false
+        }
+    }
+
     fun getCommentsFlow(sightingId: String) =
         com.railfancopilot.app.data.repository.FirestoreCommunityRepo.getCommentsFlow(sightingId)
 
@@ -1017,6 +1052,18 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     private val _alertGoldenHour = MutableStateFlow(true)
     val alertGoldenHour: StateFlow<Boolean> = _alertGoldenHour.asStateFlow()
 
+    // Mirrored to Firestore users/{uid} (not just local DataStore) because the
+    // nearbySightingAlert Cloud Function decides who to push server-side.
+    private val _nearbyAlertsEnabled = MutableStateFlow(false)
+    val nearbyAlertsEnabled: StateFlow<Boolean> = _nearbyAlertsEnabled.asStateFlow()
+
+    private val _nearbyAlertRadiusMiles = MutableStateFlow(25.0)
+    val nearbyAlertRadiusMiles: StateFlow<Double> = _nearbyAlertRadiusMiles.asStateFlow()
+
+    // Empty set = all railroads (no filter)
+    private val _nearbyAlertRailroads = MutableStateFlow<Set<String>>(emptySet())
+    val nearbyAlertRailroads: StateFlow<Set<String>> = _nearbyAlertRailroads.asStateFlow()
+
     fun setAlertRareLoco(on: Boolean)   { _alertRareLoco.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_RARE_LOCO]   = on } } }
     fun setAlertHotTrain(on: Boolean)   { _alertHotTrain.value = on;   viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HOT_TRAIN]   = on } } }
     fun setAlertHighSpeed(on: Boolean)  { _alertHighSpeed.value = on;  viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HIGH_SPEED]  = on } } }
@@ -1024,6 +1071,53 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     fun setAlertApproaching(on: Boolean){ _alertApproaching.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_APPROACHING] = on } } }
     fun setAlertHeritage(on: Boolean)   { _alertHeritage.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_HERITAGE] = on } } }
     fun setAlertGoldenHour(on: Boolean) { _alertGoldenHour.value = on; viewModelScope.launch { settingsStore.edit { it[PREF_ALERT_GOLDEN_HOUR] = on } } }
+
+    fun setNearbyAlertsEnabled(on: Boolean) {
+        _nearbyAlertsEnabled.value = on
+        viewModelScope.launch { settingsStore.edit { it[PREF_NEARBY_ALERTS_ENABLED] = on } }
+        syncNearbyAlertPrefs()
+        if (on) _userLocation.value?.let { syncLastKnownLocation(it, force = true) }
+    }
+
+    fun setNearbyAlertRadius(miles: Double) {
+        _nearbyAlertRadiusMiles.value = miles
+        viewModelScope.launch { settingsStore.edit { it[PREF_NEARBY_ALERT_RADIUS_MI] = miles } }
+        syncNearbyAlertPrefs()
+    }
+
+    /** Empty resulting set means "all railroads" — no filter applied server-side. */
+    fun toggleNearbyAlertRailroad(railroad: String) {
+        val current = _nearbyAlertRailroads.value
+        _nearbyAlertRailroads.value = if (railroad in current) current - railroad else current + railroad
+        viewModelScope.launch { settingsStore.edit { it[PREF_NEARBY_ALERT_RAILROADS] = _nearbyAlertRailroads.value } }
+        syncNearbyAlertPrefs()
+    }
+
+    private fun syncNearbyAlertPrefs() {
+        val uid = _currentUserId.value ?: return
+        com.railfancopilot.app.data.repository.FirestoreProfileRepo.updateNearbyAlertPrefs(
+            uid, _nearbyAlertsEnabled.value, _nearbyAlertRadiusMiles.value, _nearbyAlertRailroads.value.toList()
+        )
+    }
+
+    // Throttled so every GPS tick doesn't write to Firestore — only sync when
+    // the user has actually moved meaningfully or enough time has passed.
+    private var lastSyncedLocation: Location? = null
+    private var lastLocationSyncMs = 0L
+    private fun syncLastKnownLocation(location: Location, force: Boolean = false) {
+        if (!_nearbyAlertsEnabled.value) return
+        val uid = _currentUserId.value ?: return
+        val now = System.currentTimeMillis()
+        val movedFar = lastSyncedLocation?.let { it.distanceTo(location) > 1609.34 } ?: true // > 1 mi
+        val stale = now - lastLocationSyncMs > 15 * 60 * 1000L // > 15 min
+        if (!force && !movedFar && !stale) return
+
+        lastSyncedLocation = location
+        lastLocationSyncMs = now
+        com.railfancopilot.app.data.repository.FirestoreProfileRepo.updateLastKnownLocation(
+            uid, location.latitude, location.longitude
+        )
+    }
 
     // Tracks which Firestore alert IDs have already been merged so we don't
     // re-fire the in-app banner on every snapshot refresh.
@@ -1248,6 +1342,52 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             _isLoadingLocos.value = true
             _locomotives.value = repo.getLocomotivedDatabase()
             _isLoadingLocos.value = false
+        }
+    }
+
+    // ── Community roster (specific numbered units, not models) ───────────────
+
+    val roster: StateFlow<List<com.railfancopilot.app.data.models.RosterEntry>> =
+        com.railfancopilot.app.data.repository.FirestoreRosterRepo.getRosterFlow()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _isSubmittingRosterEntry = MutableStateFlow(false)
+    val isSubmittingRosterEntry: StateFlow<Boolean> = _isSubmittingRosterEntry.asStateFlow()
+
+    fun submitRosterEntry(railroad: String, number: String, model: String, notes: String, photoBytes: ByteArray? = null) {
+        if (railroad.isBlank() || number.isBlank()) return
+        viewModelScope.launch {
+            _isSubmittingRosterEntry.value = true
+            try {
+                val id = com.railfancopilot.app.data.repository.FirestoreRosterRepo.submitRosterEntry(
+                    railroad, number, model, notes, _userName.value
+                )
+                if (photoBytes != null) {
+                    com.railfancopilot.app.data.repository.FirestoreRosterRepo.addRosterPhoto(id, photoBytes)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("RailFanVM", "submitRosterEntry failed: ${e.message}", e)
+            }
+            _isSubmittingRosterEntry.value = false
+        }
+    }
+
+    fun upvoteRosterEntry(id: String) {
+        com.railfancopilot.app.data.repository.FirestoreRosterRepo.upvoteRosterEntry(id)
+    }
+
+    private val _isUploadingRosterPhoto = MutableStateFlow(false)
+    val isUploadingRosterPhoto: StateFlow<Boolean> = _isUploadingRosterPhoto.asStateFlow()
+
+    fun addRosterPhoto(id: String, photoBytes: ByteArray) {
+        viewModelScope.launch {
+            _isUploadingRosterPhoto.value = true
+            try {
+                com.railfancopilot.app.data.repository.FirestoreRosterRepo.addRosterPhoto(id, photoBytes)
+            } catch (e: Exception) {
+                android.util.Log.e("RailFanVM", "addRosterPhoto failed: ${e.message}", e)
+            }
+            _isUploadingRosterPhoto.value = false
         }
     }
 
@@ -1998,6 +2138,25 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun editSpot(
+        spot: com.railfancopilot.app.data.models.RailfanSpot,
+        newPhotoBytes: ByteArray? = null,
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isSubmittingSpot.value = true
+            _spotSubmitError.value = null
+            try {
+                com.railfancopilot.app.data.repository.FirestoreSpotsRepo.editSpot(spot, newPhotoBytes)
+                onDone()
+            } catch (e: Exception) {
+                _spotSubmitError.value = "Failed to save changes. Check your connection and try again."
+            } finally {
+                _isSubmittingSpot.value = false
+            }
+        }
+    }
+
     fun upvoteSpot(spotId: String) {
         com.railfancopilot.app.data.repository.FirestoreSpotsRepo.upvoteSpot(spotId)
     }
@@ -2043,6 +2202,115 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
 
     private var watchlistListenerJob: kotlinx.coroutines.Job? = null
 
+    // ── User profile / username claim ────────────────────────────────────────
+
+    private val _userProfile = MutableStateFlow<com.railfancopilot.app.data.models.UserProfile?>(null)
+    val userProfile: StateFlow<com.railfancopilot.app.data.models.UserProfile?> = _userProfile.asStateFlow()
+
+    private val _usernameClaimResult = MutableStateFlow<com.railfancopilot.app.data.models.UsernameClaimResult?>(null)
+    val usernameClaimResult: StateFlow<com.railfancopilot.app.data.models.UsernameClaimResult?> = _usernameClaimResult.asStateFlow()
+
+    private val _isClaimingUsername = MutableStateFlow(false)
+    val isClaimingUsername: StateFlow<Boolean> = _isClaimingUsername.asStateFlow()
+
+    private var profileListenerJob: kotlinx.coroutines.Job? = null
+
+    fun claimUsername(username: String) {
+        val uid = _currentUserId.value ?: return
+        if (_isClaimingUsername.value) return
+        viewModelScope.launch {
+            _isClaimingUsername.value = true
+            _usernameClaimResult.value =
+                com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                    .claimUsername(uid, username, _userName.value)
+            _isClaimingUsername.value = false
+        }
+    }
+
+    fun clearUsernameClaimResult() {
+        _usernameClaimResult.value = null
+    }
+
+    // ── Follow / unfollow + viewing other profiles ───────────────────────────
+
+    private val _following = MutableStateFlow<List<com.railfancopilot.app.data.models.FollowEntry>>(emptyList())
+    val following: StateFlow<List<com.railfancopilot.app.data.models.FollowEntry>> = _following.asStateFlow()
+
+    private var followingListenerJob: kotlinx.coroutines.Job? = null
+
+    private val _viewedProfile = MutableStateFlow<com.railfancopilot.app.data.models.UserProfile?>(null)
+    val viewedProfile: StateFlow<com.railfancopilot.app.data.models.UserProfile?> = _viewedProfile.asStateFlow()
+
+    private var viewedProfileListenerJob: kotlinx.coroutines.Job? = null
+
+    private val _isFollowActionPending = MutableStateFlow(false)
+    val isFollowActionPending: StateFlow<Boolean> = _isFollowActionPending.asStateFlow()
+
+    private val _viewedFollowers = MutableStateFlow<List<com.railfancopilot.app.data.models.FollowEntry>>(emptyList())
+    val viewedFollowers: StateFlow<List<com.railfancopilot.app.data.models.FollowEntry>> = _viewedFollowers.asStateFlow()
+
+    private val _viewedFollowing = MutableStateFlow<List<com.railfancopilot.app.data.models.FollowEntry>>(emptyList())
+    val viewedFollowing: StateFlow<List<com.railfancopilot.app.data.models.FollowEntry>> = _viewedFollowing.asStateFlow()
+
+    private var viewedFollowersListenerJob: kotlinx.coroutines.Job? = null
+    private var viewedFollowingListenerJob: kotlinx.coroutines.Job? = null
+
+    fun loadProfile(uid: String) {
+        viewedProfileListenerJob?.cancel()
+        viewedFollowersListenerJob?.cancel()
+        viewedFollowingListenerJob?.cancel()
+        _viewedProfile.value = null
+        _viewedFollowers.value = emptyList()
+        _viewedFollowing.value = emptyList()
+        viewedProfileListenerJob = viewModelScope.launch {
+            com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                .getProfileFlow(uid)
+                .collect { _viewedProfile.value = it }
+        }
+        viewedFollowersListenerJob = viewModelScope.launch {
+            com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                .getFollowersFlow(uid)
+                .collect { _viewedFollowers.value = it }
+        }
+        viewedFollowingListenerJob = viewModelScope.launch {
+            com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                .getFollowingFlow(uid)
+                .collect { _viewedFollowing.value = it }
+        }
+    }
+
+    fun followUser(target: com.railfancopilot.app.data.models.UserProfile) {
+        val uid = _currentUserId.value ?: return
+        if (_isFollowActionPending.value) return
+        val myProfile = _userProfile.value
+        val myUsername = myProfile?.username ?: ""
+        val myDisplayName = myProfile?.displayName?.ifBlank { null } ?: _userName.value
+        viewModelScope.launch {
+            _isFollowActionPending.value = true
+            try {
+                com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                    .followUser(uid, myUsername, myDisplayName, target)
+            } catch (e: Exception) {
+                android.util.Log.e("RailFanVM", "followUser failed: ${e.message}", e)
+            }
+            _isFollowActionPending.value = false
+        }
+    }
+
+    fun unfollowUser(targetUid: String) {
+        val uid = _currentUserId.value ?: return
+        if (_isFollowActionPending.value) return
+        viewModelScope.launch {
+            _isFollowActionPending.value = true
+            try {
+                com.railfancopilot.app.data.repository.FirestoreProfileRepo.unfollowUser(uid, targetUid)
+            } catch (e: Exception) {
+                android.util.Log.e("RailFanVM", "unfollowUser failed: ${e.message}", e)
+            }
+            _isFollowActionPending.value = false
+        }
+    }
+
     private fun initAuth() {
         _authFailed.value = false
         viewModelScope.launch {
@@ -2057,6 +2325,20 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                         .getWatchlistFlow(uid)
                         .collect { _watchlist.value = it }
                 }
+                // Start listening to this user's profile (username, stats)
+                profileListenerJob?.cancel()
+                profileListenerJob = viewModelScope.launch {
+                    com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                        .getProfileFlow(uid)
+                        .collect { _userProfile.value = it }
+                }
+                // Start listening to who this user follows
+                followingListenerJob?.cancel()
+                followingListenerJob = viewModelScope.launch {
+                    com.railfancopilot.app.data.repository.FirestoreProfileRepo
+                        .getFollowingFlow(uid)
+                        .collect { _following.value = it }
+                }
                 // Start Firestore heritage/special alerts listener
                 startFirestoreAlertsListener()
 
@@ -2068,6 +2350,9 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                 mgr.createNotificationChannel(android.app.NotificationChannel(
                     "heritage_alerts", "Heritage Unit Alerts", android.app.NotificationManager.IMPORTANCE_HIGH
                 ).apply { description = "Alerts when a verified heritage or special locomotive is spotted" })
+                mgr.createNotificationChannel(android.app.NotificationChannel(
+                    "nearby_sighting_alerts", "Nearby Sighting Alerts", android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply { description = "Alerts when another railfan logs a sighting near your location" })
             } catch (e: Exception) {
                 android.util.Log.e("RailFanVM", "Auth failed: ${e.message}", e)
                 _authFailed.value = true
@@ -2090,6 +2375,8 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
     // ── Init ──────────────────────────────────────────────────────────────────
 
     init {
+        _onboardingShown.value = tutorialRepo.isOnboardingComplete
+        _unseenTutorialSteps.value = tutorialRepo.unseenSteps()
         createApproachNotificationChannel()
         loadSettings()
         loadAchievements()

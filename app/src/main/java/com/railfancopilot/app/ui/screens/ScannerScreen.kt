@@ -29,6 +29,7 @@ import com.railfancopilot.app.data.models.Transcript
 import com.railfancopilot.app.ui.components.*
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
+import com.railfancopilot.shared.tutorial.TutorialStep
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -240,6 +241,8 @@ fun ScannerScreen(vm: RailFanViewModel) {
     val activeChannel = remember(activeChannelId, channels) {
         channels.firstOrNull { it.id == activeChannelId }
     }
+
+    CoachMarkBanner(listOf(TutorialStep.RADIO_FREQUENCIES), vm)
 
     Box(modifier = Modifier.fillMaxSize()) {
 

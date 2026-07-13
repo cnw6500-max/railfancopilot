@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.*
@@ -39,9 +40,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.railfancopilot.app.data.models.*
+import com.railfancopilot.app.ui.components.CoachMarkBanner
 import com.railfancopilot.app.ui.components.FilterChip
 import com.railfancopilot.app.ui.components.ProGateScreen
 import com.railfancopilot.app.ui.components.SectionHeader
+import com.railfancopilot.shared.tutorial.TutorialStep
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +69,8 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         )
         return
     }
+
+    CoachMarkBanner(listOf(TutorialStep.LOCO_ID, TutorialStep.GOLDEN_HOUR), vm)
 
     val sunInfo by vm.sunInfo.collectAsState()
     val newAchievement by vm.newAchievement.collectAsState()
@@ -712,7 +717,7 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         if (locoIdHistory.isNotEmpty()) {
             item { SectionHeader("ID History (${locoIdHistory.size})") }
             items(locoIdHistory, key = { it.id }) { entry ->
-                LocoIdHistoryCard(entry, onDelete = { vm.deleteLocoIdEntry(entry) })
+                LocoIdHistoryCard(vm, entry, onDelete = { vm.deleteLocoIdEntry(entry) })
             }
         }
 
@@ -799,9 +804,13 @@ internal fun saveBitmapToFile(context: android.content.Context, bitmap: Bitmap, 
 
 @Composable
 fun LocoIdHistoryCard(
+    vm: RailFanViewModel,
     entry: LocoIdEntry,
     onDelete: () -> Unit
 ) {
+    var showRosterDialog by remember { mutableStateOf(false) }
+    val isSubmittingRoster by vm.isSubmittingRosterEntry.collectAsState()
+
     val thumbnail by produceState<Bitmap?>(initialValue = null, key1 = entry.thumbnailPath) {
         value = entry.thumbnailPath?.let { path ->
             withContext(Dispatchers.IO) {
@@ -863,9 +872,24 @@ fun LocoIdHistoryCard(
             )
         }
 
+        IconButton(onClick = { showRosterDialog = true }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add to community roster", tint = RailBlue, modifier = Modifier.size(18.dp))
+        }
         IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Default.DeleteOutline, null, tint = TextMuted, modifier = Modifier.size(16.dp))
         }
+    }
+
+    if (showRosterDialog) {
+        RosterSubmitDialog(
+            isSubmitting = isSubmittingRoster,
+            initialNotes = entry.resultText.take(300),
+            onDismiss = { showRosterDialog = false },
+            onSubmit = { railroad, number, model, notes, photoBytes ->
+                vm.submitRosterEntry(railroad, number, model, notes, photoBytes)
+                showRosterDialog = false
+            }
+        )
     }
 }
 

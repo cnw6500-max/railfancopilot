@@ -1,5 +1,13 @@
 package com.railfancopilot.app.ui.components
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -209,6 +217,61 @@ fun GpsWaitingCard(modifier: Modifier = Modifier) {
         Column {
             Text("Acquiring GPS signal…", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             Text("Train data loads once your location is confirmed", color = TextMuted, fontSize = 12.sp)
+        }
+    }
+}
+
+// ── Share with photo ──────────────────────────────────────────────────────────
+
+/**
+ * Shares [text] via the system chooser. If [photoUrl] is a remote URL, downloads
+ * it to a cache file first and attaches it as an image (so Facebook/Reddit/etc.
+ * show the photo, not just a link) — falls back to text-only if there's no
+ * photo, or the download fails.
+ */
+fun shareWithPhoto(
+    context: Context,
+    scope: CoroutineScope,
+    text: String,
+    photoUrl: String?,
+    chooserTitle: String = "Share"
+) {
+    if (photoUrl.isNullOrBlank()) {
+        context.startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                },
+                chooserTitle
+            )
+        )
+        return
+    }
+
+    scope.launch(Dispatchers.IO) {
+        val imageUri = try {
+            val bytes = java.net.URL(photoUrl).openStream().use { it.readBytes() }
+            val dir = File(context.cacheDir, "shared_images").apply { mkdirs() }
+            val file = File(dir, "share_${System.currentTimeMillis()}.jpg")
+            file.writeBytes(bytes)
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        } catch (_: Exception) {
+            null
+        }
+
+        withContext(Dispatchers.Main) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                putExtra(Intent.EXTRA_TEXT, text)
+                if (imageUri != null) {
+                    type = "image/jpeg"
+                    putExtra(Intent.EXTRA_STREAM, imageUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } else {
+                    type = "text/plain"
+                }
+            }
+            context.startActivity(Intent.createChooser(intent, chooserTitle))
         }
     }
 }

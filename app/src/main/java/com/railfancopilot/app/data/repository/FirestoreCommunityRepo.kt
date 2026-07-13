@@ -71,6 +71,7 @@ object FirestoreCommunityRepo {
                         val lat          = doc.getDouble("latitude")     ?: 0.0
                         val lon          = doc.getDouble("longitude")    ?: 0.0
                         val reporter     = doc.getString("reporterName") ?: "Railfan"
+                        val reporterUid  = doc.getString("reporterUid")
                         val tsMs         = doc.getDouble("timestampMs")?.toLong()
                                          ?: doc.getLong("timestampMs")
                                          ?: System.currentTimeMillis()
@@ -100,6 +101,7 @@ object FirestoreCommunityRepo {
                                 id              = doc.id,
                                 userId          = reporter,
                                 userName        = reporter,
+                                reporterUid     = reporterUid,
                                 latitude        = lat,
                                 longitude       = lon,
                                 text            = text,
@@ -142,6 +144,7 @@ object FirestoreCommunityRepo {
                         val lat          = doc.getDouble("latitude")     ?: 0.0
                         val lon          = doc.getDouble("longitude")    ?: 0.0
                         val reporter     = doc.getString("reporterName") ?: "Railfan"
+                        val reporterUid  = doc.getString("reporterUid")
                         val tsMs         = doc.getDouble("timestampMs")?.toLong()
                                          ?: doc.getLong("timestampMs")
                                          ?: System.currentTimeMillis()
@@ -157,6 +160,7 @@ object FirestoreCommunityRepo {
 
                         CommunityReport(
                             id = doc.id, userId = reporter, userName = reporter,
+                            reporterUid = reporterUid,
                             latitude = lat, longitude = lon, text = text,
                             trainSymbol = trainSymbol.ifBlank { null }, railroad = railroad,
                             tags = "[]", timestampMs = tsMs, upvotes = upvotes,
@@ -221,9 +225,31 @@ object FirestoreCommunityRepo {
         )
         try {
             db.collection(COLLECTION).add(doc).await()
+            if (uid != null) {
+                db.collection("users").document(uid).update(
+                    "sightingCount", com.google.firebase.firestore.FieldValue.increment(1)
+                ).addOnFailureListener { /* best-effort — don't fail the submit over a counter */ }
+            }
         } catch (e: Exception) {
             if (com.railfancopilot.app.BuildConfig.DEBUG)
                 android.util.Log.e("FirestoreRepo", "submitSighting failed: ${e.message}", e)
+        }
+    }
+
+    // ── Edit an existing sighting (owner only, enforced server-side too) ──────
+
+    suspend fun updateSighting(sightingId: String, text: String, trainSymbol: String?, railroad: String?) {
+        val updates = hashMapOf<String, Any?>(
+            "notes" to text,
+            "trainSymbol" to (trainSymbol ?: "Unknown"),
+            "railroad" to (railroad ?: "Unknown")
+        )
+        try {
+            db.collection(COLLECTION).document(sightingId).update(updates).await()
+        } catch (e: Exception) {
+            if (com.railfancopilot.app.BuildConfig.DEBUG)
+                android.util.Log.e("FirestoreRepo", "updateSighting failed: ${e.message}", e)
+            throw e
         }
     }
 

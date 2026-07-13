@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Report a bug — Railfan Copilot</title>
+<meta name="description" content="Report a bug or issue with Railfan Copilot." />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a href="index.html" class="brand"><span class="mark">RC</span> Railfan Copilot</a>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="support.html">Support</a>
+      <a href="report-bug.html" class="active">Report a bug</a>
+      <a href="privacy.html">Privacy</a>
+    </nav>
+  </div>
+</header>
+
+<div class="page-header wrap">
+  <h1>Report a bug</h1>
+  <p>Found something broken? Tell us what happened and we'll look into it.</p>
+</div>
+
+<main class="content wrap">
+  <div class="card">
+    <form class="report-form" id="bug-form">
+
+      <div class="field">
+        <label for="title">Summary *</label>
+        <input type="text" id="title" name="title" maxlength="200" placeholder="e.g. App crashes when opening the Roster tab" required />
+      </div>
+
+      <div class="field">
+        <label for="description">What happened? *</label>
+        <textarea id="description" name="description" maxlength="5000" placeholder="Steps to reproduce, what you expected, and what actually happened." required></textarea>
+      </div>
+
+      <div class="field">
+        <label for="platform">Platform</label>
+        <select id="platform" name="platform">
+          <option value="">Not sure / other</option>
+          <option value="Android">Android</option>
+          <option value="iOS">iOS</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="appVersion">App version (optional)</label>
+        <input type="text" id="appVersion" name="appVersion" maxlength="40" placeholder="Found in Settings → About" />
+      </div>
+
+      <div class="field">
+        <label for="email">Your email (optional)</label>
+        <input type="email" id="email" name="email" maxlength="200" placeholder="If you'd like a follow-up" />
+        <div class="field-hint">We'll only use this to follow up on your report — never for marketing.</div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">Submit report</button>
+      <div class="form-status" id="form-status"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Prefer email?</h2>
+    <p>You can also reach us directly at <a href="mailto:ratt.dawg@gmail.com">ratt.dawg@gmail.com</a> — screenshots and screen recordings are always welcome.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div>&copy; 2026 Railfan Copilot. Not affiliated with any railroad, Amtrak, or transit agency.</div>
+    <div class="links">
+      <a href="support.html">Support</a>
+      <a href="report-bug.html">Report a bug</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="mailto:ratt.dawg@gmail.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="js/report-bug.js"></script>
+
+</body>
+</html>

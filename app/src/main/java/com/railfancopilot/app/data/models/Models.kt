@@ -165,6 +165,7 @@ data class CommunityReport(
     @PrimaryKey val id: String,
     val userId: String,
     val userName: String,
+    val reporterUid: String? = null,   // real Firebase uid, for profile links / follow — userId above is actually the display name
     val latitude: Double,
     val longitude: Double,
     val text: String,
@@ -178,6 +179,57 @@ data class CommunityReport(
     val consist: String? = null,        // JSON-serialized List<ConsistEntry>
     val weather: String? = null,        // e.g. "72°F · Partly Cloudy · 8 mph wind"
     val locationName: String = ""       // reverse-geocoded place name
+)
+
+// ── User profiles (crowdsourced identity) ─────────────────────────────────────
+
+/**
+ * Mirrors the Firestore `users/{uid}` document. Not a Room entity — read live
+ * from the cloud, same pattern as CommunityReport.
+ */
+data class UserProfile(
+    val uid: String,
+    val username: String,        // unique handle, lowercase [a-z0-9_]{3,20}, backs follows/roster attribution
+    val displayName: String,     // free-text label shown on reports, may differ in case/spacing from username
+    val joinedMs: Long,
+    val sightingCount: Int = 0,
+    val reporterScore: Int = 0,
+    val followerCount: Int = 0,
+    val followingCount: Int = 0
+)
+
+sealed class UsernameClaimResult {
+    data object Success : UsernameClaimResult()
+    data object Taken : UsernameClaimResult()
+    data object InvalidFormat : UsernameClaimResult()
+    data class Error(val message: String) : UsernameClaimResult()
+}
+
+/** One row of `users/{uid}/following/{targetUid}` — denormalized so lists render with no extra fetches. */
+data class FollowEntry(
+    val uid: String,
+    val username: String,
+    val displayName: String,
+    val followedMs: Long
+)
+
+/**
+ * One document in the community-maintained `roster` collection — a specific
+ * numbered locomotive (not a model/class; see LocomotiveEntry for that).
+ * Doc ID is a normalized "{railroad}_{number}" key, so repeat sightings of
+ * the same unit update one shared entry instead of creating duplicates.
+ */
+data class RosterEntry(
+    val id: String,
+    val railroad: String,
+    val number: String,
+    val model: String = "",       // optional, e.g. "ES44AC"
+    val notes: String = "",       // paint scheme, special markings, corrections
+    val photoUrl: String? = null,
+    val submittedBy: String = "Railfan",
+    val submittedMs: Long = 0L,
+    val lastSeenMs: Long = 0L,
+    val upvotes: Int = 0
 )
 
 // ── Encyclopedia ─────────────────────────────────────────────────────────────
@@ -348,6 +400,7 @@ data class RailfanSpot(
     val longitude: Double,
     val submittedBy: String,
     val submittedMs: Long,
+    val submittedByUid: String? = null,   // owner check for edit — submittedBy is just a display name
     val railroad: String = "",
     val subdivision: String = "",
     val notes: String = "",

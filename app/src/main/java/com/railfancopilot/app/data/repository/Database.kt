@@ -193,6 +193,13 @@ interface TimetableCacheDao {
     suspend fun pruneOlderThan(beforeMs: Long)
 }
 
+/** v9 → v10: added reporterUid column to community_reports. */
+private val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE community_reports ADD COLUMN reporterUid TEXT")
+    }
+}
+
 /** v8 → v9: added timetable_cache table. */
 private val MIGRATION_8_9 = object : Migration(8, 9) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -255,7 +262,7 @@ private val MIGRATION_7_8 = object : Migration(7, 8) {
         TripLog::class,
         TimetableCacheEntry::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class RailFanDatabase : RoomDatabase() {
@@ -278,7 +285,7 @@ abstract class RailFanDatabase : RoomDatabase() {
                     RailFanDatabase::class.java,
                     "railfan_db"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build().also { INSTANCE = it }
             }

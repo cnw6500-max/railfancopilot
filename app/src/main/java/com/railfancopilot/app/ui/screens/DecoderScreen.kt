@@ -36,6 +36,7 @@ import com.railfancopilot.app.data.models.TrainSymbolDecodeResult
 import com.railfancopilot.app.ui.components.*
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
+import com.railfancopilot.shared.tutorial.TutorialStep
 
 @Composable
 fun DecoderScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
@@ -68,6 +69,8 @@ fun DecoderScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     }
 
     fun submit() { if (inputText.isNotBlank()) vm.decodeSymbol(inputText) }
+
+    CoachMarkBanner(listOf(TutorialStep.SYMBOL_DECODER), vm)
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),

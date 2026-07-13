@@ -2,6 +2,8 @@ package com.railfancopilot.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +31,9 @@ import com.railfancopilot.app.data.models.LocomotiveEntry
 import com.railfancopilot.app.ui.components.*
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private data class RosterLink(
     val name: String,
@@ -57,6 +62,8 @@ private val rosterLinks = listOf(
     RosterLink("Browse all rosters",          "All",   "https://www.dieselshop.us",              RailBlue),
 )
 
+private enum class RosterTab { MODELS, COMMUNITY }
+
 @Composable
 fun EncyclopediaScreen(vm: RailFanViewModel) {
     val locos by vm.locomotives.collectAsState()
@@ -65,6 +72,7 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
     var searchQuery    by remember { mutableStateOf("") }
     var selectedLoco   by remember { mutableStateOf<LocomotiveEntry?>(null) }
     var rrFilter       by remember { mutableStateOf<com.railfancopilot.app.data.models.Railroad?>(null) }
+    var selectedTab    by remember { mutableStateOf(RosterTab.MODELS) }
 
     // Collect all railroads that appear in the roster for the filter row
     val rosterRailroads = remember(locos) {
@@ -83,6 +91,19 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
     Column(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)) {
             Text("Railroad Encyclopedia", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+        }
+
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FilterChip("Models", selectedTab == RosterTab.MODELS) { selectedTab = RosterTab.MODELS }
+            FilterChip("Community", selectedTab == RosterTab.COMMUNITY) { selectedTab = RosterTab.COMMUNITY }
+        }
+
+        if (selectedTab == RosterTab.COMMUNITY) {
+            CommunityRosterSection(vm)
+            return@Column
         }
 
         // Search
@@ -240,6 +261,374 @@ fun EncyclopediaScreen(vm: RailFanViewModel) {
     selectedLoco?.let { loco ->
         LocoDetailSheet(loco) { selectedLoco = null }
     }
+}
+
+// ── Community roster (specific numbered units, crowdsourced) ─────────────────
+
+@Composable
+private fun CommunityRosterSection(vm: RailFanViewModel) {
+    val roster by vm.roster.collectAsState()
+    val isSubmitting by vm.isSubmittingRosterEntry.collectAsState()
+    val isUploadingPhoto by vm.isUploadingRosterPhoto.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+    var showSubmitDialog by remember { mutableStateOf(false) }
+    var selectedEntryId by remember { mutableStateOf<String?>(null) }
+    val selectedEntry = remember(roster, selectedEntryId) { roster.find { it.id == selectedEntryId } }
+
+    val filtered = remember(roster, searchQuery) {
+        if (searchQuery.isBlank()) roster
+        else roster.filter {
+            it.railroad.contains(searchQuery, ignoreCase = true) ||
+            it.number.contains(searchQuery, ignoreCase = true) ||
+            it.model.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                placeholder = { Text("Search railroad, number, model...", color = TextMuted) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = TextMuted, modifier = Modifier.size(18.dp)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = RailBlueMid,
+                    unfocusedBorderColor = BorderLight,
+                    cursorColor = RailBlue,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                ),
+                shape = RoundedCornerShape(10.dp),
+                singleLine = true
+            )
+
+            LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
+                item { SectionHeader("Community roster (${filtered.size})") }
+                if (filtered.isEmpty()) {
+                    item {
+                        EmptyState(
+                            icon = Icons.Default.DirectionsRailway,
+                            title = if (searchQuery.isBlank()) "No units logged yet" else "No results for \"$searchQuery\"",
+                            subtitle = "Tap + to log a specific locomotive by road number"
+                        )
+                    }
+                } else {
+                    items(filtered, key = { it.id }) { entry ->
+                        RosterCard(
+                            entry,
+                            onUpvote = { vm.upvoteRosterEntry(entry.id) },
+                            onClick = { selectedEntryId = entry.id }
+                        )
+                    }
+                }
+                item { Spacer(Modifier.height(100.dp)) }
+            }
+        }
+
+        FloatingActionButton(
+            onClick = { showSubmitDialog = true },
+            containerColor = RailBlueDark,
+            contentColor = RailBlue,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+                .size(48.dp)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Log a locomotive")
+        }
+    }
+
+    if (showSubmitDialog) {
+        RosterSubmitDialog(
+            isSubmitting = isSubmitting,
+            onDismiss = { showSubmitDialog = false },
+            onSubmit = { railroad, number, model, notes, photoBytes ->
+                vm.submitRosterEntry(railroad, number, model, notes, photoBytes)
+                showSubmitDialog = false
+            }
+        )
+    }
+
+    selectedEntry?.let { entry ->
+        RosterDetailSheet(
+            entry = entry,
+            isUploadingPhoto = isUploadingPhoto,
+            onUpvote = { vm.upvoteRosterEntry(entry.id) },
+            onAddPhoto = { bytes -> vm.addRosterPhoto(entry.id, bytes) },
+            onDismiss = { selectedEntryId = null }
+        )
+    }
+}
+
+@Composable
+private fun RosterCard(entry: com.railfancopilot.app.data.models.RosterEntry, onUpvote: () -> Unit, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(BgCard)
+            .border(0.5.dp, Border, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(BgInput),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("🚂", fontSize = 20.sp)
+            if (entry.photoUrl != null) {
+                AsyncImage(
+                    model = entry.photoUrl,
+                    contentDescription = "${entry.railroad} ${entry.number}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text("${entry.railroad} ${entry.number}", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            if (entry.model.isNotBlank()) {
+                Text(entry.model, color = TextSecondary, fontSize = 12.sp)
+            }
+            if (entry.notes.isNotBlank()) {
+                Text(
+                    entry.notes,
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+        }
+        IconButton(
+            onClick = { shareWithPhoto(context, scope, rosterShareText(entry), entry.photoUrl, "Share locomotive") },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(Icons.Default.Share, contentDescription = "Share locomotive", tint = TextMuted, modifier = Modifier.size(16.dp))
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onUpvote)
+                .padding(4.dp)
+        ) {
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Upvote", tint = RailBlue, modifier = Modifier.size(20.dp))
+            Text("${entry.upvotes}", color = TextSecondary, fontSize = 12.sp)
+        }
+    }
+}
+
+private fun rosterShareText(entry: com.railfancopilot.app.data.models.RosterEntry): String = buildString {
+    appendLine("🚂 ${entry.railroad} ${entry.number}")
+    if (entry.model.isNotBlank()) appendLine("Model: ${entry.model}")
+    if (entry.notes.isNotBlank()) appendLine(entry.notes)
+    appendLine()
+    append("Logged with Railfan Copilot")
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RosterDetailSheet(
+    entry: com.railfancopilot.app.data.models.RosterEntry,
+    isUploadingPhoto: Boolean,
+    onUpvote: () -> Unit,
+    onAddPhoto: (ByteArray) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let(onAddPhoto)
+        } catch (_: Exception) { }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BgCard, tonalElevation = 0.dp) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(BgInput),
+                contentAlignment = Alignment.Center
+            ) {
+                if (entry.photoUrl != null) {
+                    AsyncImage(
+                        model = entry.photoUrl,
+                        contentDescription = "${entry.railroad} ${entry.number}",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text("🚂", fontSize = 40.sp)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${entry.railroad} ${entry.number}", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                IconButton(
+                    onClick = { shareWithPhoto(context, scope, rosterShareText(entry), entry.photoUrl, "Share locomotive") }
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Share locomotive", tint = TextMuted, modifier = Modifier.size(20.dp))
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onUpvote).padding(6.dp)
+                ) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Upvote", tint = RailBlue, modifier = Modifier.size(22.dp))
+                    Text("${entry.upvotes}", color = TextSecondary, fontSize = 12.sp)
+                }
+            }
+
+            if (entry.model.isNotBlank()) {
+                Text(entry.model, color = TextSecondary, fontSize = 14.sp)
+            }
+            if (entry.notes.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(entry.notes, color = TextPrimary, fontSize = 13.sp, lineHeight = 19.sp)
+            }
+
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = BorderLight, thickness = 0.5.dp)
+            Spacer(Modifier.height(12.dp))
+
+            if (entry.submittedMs > 0) {
+                TagRow("First logged", remember(entry.submittedMs) { SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(entry.submittedMs)) })
+            }
+            if (entry.lastSeenMs > 0) {
+                TagRow("Last seen", remember(entry.lastSeenMs) { SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(entry.lastSeenMs)) })
+            }
+            TagRow("Logged by", entry.submittedBy)
+
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BgInput)
+                    .clickable(enabled = !isUploadingPhoto) { photoLauncher.launch("image/*") }
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.AddAPhoto, null, tint = RailBlue, modifier = Modifier.size(16.dp))
+                Text(
+                    if (isUploadingPhoto) "Uploading…" else if (entry.photoUrl != null) "Replace photo" else "Add a photo",
+                    color = TextPrimary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RosterSubmitDialog(
+    isSubmitting: Boolean,
+    initialRailroad: String = "",
+    initialNumber: String = "",
+    initialNotes: String = "",
+    onDismiss: () -> Unit,
+    onSubmit: (railroad: String, number: String, model: String, notes: String, photoBytes: ByteArray?) -> Unit
+) {
+    val context = LocalContext.current
+    var railroad by remember { mutableStateOf(initialRailroad) }
+    var number by remember { mutableStateOf(initialNumber) }
+    var model by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf(initialNotes) }
+    var photoBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var photoLabel by remember { mutableStateOf("") }
+
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        try {
+            photoBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            photoLabel = uri.lastPathSegment ?: "photo selected"
+        } catch (_: Exception) { }
+    }
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextPrimary,
+        unfocusedTextColor = TextPrimary,
+        focusedBorderColor = RailBlue,
+        unfocusedBorderColor = TextMuted
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BgCard,
+        title = { Text("Log a locomotive", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = railroad, onValueChange = { railroad = it },
+                    label = { Text("Railroad", color = TextMuted, fontSize = 12.sp) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors
+                )
+                OutlinedTextField(
+                    value = number, onValueChange = { number = it },
+                    label = { Text("Road number", color = TextMuted, fontSize = 12.sp) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors
+                )
+                OutlinedTextField(
+                    value = model, onValueChange = { model = it },
+                    label = { Text("Model (optional)", color = TextMuted, fontSize = 12.sp) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors
+                )
+                OutlinedTextField(
+                    value = notes, onValueChange = { notes = it },
+                    label = { Text("Notes — paint scheme, corrections (optional)", color = TextMuted, fontSize = 12.sp) },
+                    modifier = Modifier.fillMaxWidth(), colors = fieldColors
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BgInput)
+                        .clickable { photoLauncher.launch("image/*") }
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.AddAPhoto, null, tint = RailBlue, modifier = Modifier.size(16.dp))
+                    Text(
+                        if (photoBytes != null) photoLabel else "Add a photo (optional)",
+                        color = if (photoBytes != null) TextPrimary else TextMuted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSubmit(railroad, number, model, notes, photoBytes) },
+                enabled = !isSubmitting && railroad.isNotBlank() && number.isNotBlank()
+            ) {
+                Text(if (isSubmitting) "Submitting…" else "Submit", color = RailBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = TextMuted) }
+        }
+    )
 }
 
 @Composable

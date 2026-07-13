@@ -2,4 +2,6 @@
 <paths>
     <!-- app-private photos directory: context.filesDir/photos/ -->
     <files-path name="photos" path="photos/" />
+    <!-- temp images downloaded for sharing: context.cacheDir/shared_images/ -->
+    <cache-path name="shared_images" path="shared_images/" />
 </paths>

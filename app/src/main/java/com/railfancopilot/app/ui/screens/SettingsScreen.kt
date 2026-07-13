@@ -6,8 +6,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -24,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.railfancopilot.app.ui.components.FilterChip
 import com.railfancopilot.app.ui.components.SectionHeader
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
@@ -53,8 +56,9 @@ private val FAQ = listOf(
 )
 
 @Composable
-fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
+fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}, onNavigateToProfile: (String) -> Unit = {}) {
     val context = LocalContext.current
+    val currentUserId        by vm.currentUserId.collectAsState()
     val isPro         by vm.isProUser.collectAsState()
     val isPurchased   by vm.isPurchased.collectAsState()
     val isInTrial     by vm.isInTrial.collectAsState()
@@ -76,8 +80,15 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val marcEnabled          by vm.marcEnabled.collectAsState()
     val metrolinkEnabled     by vm.metrolinkEnabled.collectAsState()
     val alertGoldenHour      by vm.alertGoldenHour.collectAsState()
+    val nearbyAlertsEnabled  by vm.nearbyAlertsEnabled.collectAsState()
+    val nearbyAlertRadiusMiles by vm.nearbyAlertRadiusMiles.collectAsState()
+    val nearbyAlertRailroads by vm.nearbyAlertRailroads.collectAsState()
     val userName             by vm.userName.collectAsState()
     var userNameDraft by remember(userName) { mutableStateOf(userName) }
+    val userProfile           by vm.userProfile.collectAsState()
+    val usernameClaimResult   by vm.usernameClaimResult.collectAsState()
+    val isClaimingUsername    by vm.isClaimingUsername.collectAsState()
+    var usernameDraft by remember(userProfile?.username) { mutableStateOf(userProfile?.username ?: "") }
 
     LazyColumn(
         contentPadding = PaddingValues(bottom = 100.dp),
@@ -186,6 +197,24 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         item {
             SettingsCard {
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = currentUserId != null) {
+                            currentUserId?.let(onNavigateToProfile)
+                        }
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.AccountCircle, null, tint = RailBlue, modifier = Modifier.size(20.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("View my profile", color = TextPrimary, fontSize = 14.sp)
+                        Text("Public sightings, stats, and achievements", color = TextMuted, fontSize = 12.sp)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                }
+                SettingsDivider()
+                Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -206,6 +235,62 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { vm.saveUserName(userNameDraft) })
                     )
+                }
+                SettingsDivider()
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.AlternateEmail, null, tint = RailBlue, modifier = Modifier.size(20.dp))
+                        OutlinedTextField(
+                            value = usernameDraft,
+                            onValueChange = {
+                                usernameDraft = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' }.take(20)
+                                vm.clearUsernameClaimResult()
+                            },
+                            label = { Text("Username (unique handle)", color = TextMuted, fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedBorderColor = RailBlue,
+                                unfocusedBorderColor = TextMuted,
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+                        )
+                        val alreadyClaimed = userProfile?.username?.isNotBlank() == true && userProfile?.username == usernameDraft
+                        TextButton(
+                            onClick = { vm.claimUsername(usernameDraft) },
+                            enabled = !isClaimingUsername && usernameDraft.length >= 3 && !alreadyClaimed
+                        ) {
+                            Text(if (isClaimingUsername) "Claiming…" else "Claim", color = RailBlue)
+                        }
+                    }
+                    val (feedbackText, feedbackColor) = when (val result = usernameClaimResult) {
+                        is com.railfancopilot.app.data.models.UsernameClaimResult.Success ->
+                            "Username claimed!" to RailGreen
+                        is com.railfancopilot.app.data.models.UsernameClaimResult.Taken ->
+                            "That username is already taken" to RailRed
+                        is com.railfancopilot.app.data.models.UsernameClaimResult.InvalidFormat ->
+                            "3–20 letters, numbers, or underscores" to RailRed
+                        is com.railfancopilot.app.data.models.UsernameClaimResult.Error ->
+                            "Couldn't claim username — try again" to RailRed
+                        null -> when {
+                            userProfile?.username?.isNotBlank() == true && userProfile?.username == usernameDraft ->
+                                "This is your current username" to TextMuted
+                            else -> null to TextMuted
+                        }
+                    }
+                    if (feedbackText != null) {
+                        Text(
+                            feedbackText,
+                            color = feedbackColor,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 32.dp, top = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -251,6 +336,46 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     checked  = alertGoldenHour,
                     onCheckedChange = { vm.setAlertGoldenHour(it) }
                 )
+                SettingsDivider()
+                SwitchSetting(
+                    icon     = Icons.Default.NearMe,
+                    title    = "Nearby sighting alerts",
+                    subtitle = "Notify when another railfan logs a sighting near you",
+                    checked  = nearbyAlertsEnabled,
+                    onCheckedChange = { vm.setNearbyAlertsEnabled(it) }
+                )
+                if (nearbyAlertsEnabled) {
+                    SettingsDivider()
+                    SliderSetting(
+                        icon = Icons.Default.SocialDistance,
+                        title = "Nearby alert radius",
+                        subtitle = "How close a sighting must be to notify you",
+                        value = nearbyAlertRadiusMiles.toFloat(),
+                        valueRange = 5f..100f,
+                        steps = 18,
+                        displayValue = "${nearbyAlertRadiusMiles.roundToInt()} mi",
+                        onValueChangeFinished = { vm.setNearbyAlertRadius(it.toDouble()) }
+                    )
+                    SettingsDivider()
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text("Railroads to alert for", color = TextPrimary, fontSize = 13.sp)
+                        Text(
+                            if (nearbyAlertRailroads.isEmpty()) "All railroads" else "${nearbyAlertRailroads.size} selected",
+                            color = TextMuted, fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            com.railfancopilot.app.data.models.Railroad.entries.forEach { rr ->
+                                FilterChip(rr.displayName, rr.name in nearbyAlertRailroads) {
+                                    vm.toggleNearbyAlertRailroad(rr.name)
+                                }
+                            }
+                        }
+                    }
+                }
                 SettingsDivider()
                 if (isPro) {
                     SliderSetting(
@@ -498,14 +623,14 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     icon = Icons.Default.PrivacyTip,
                     title = "Privacy Policy",
                     subtitle = "How we collect and use your data",
-                    url = "https://docs.google.com/document/d/12D9nfLIoCKgYhjIm2c2ljLvksKsm6n0alWkTI3IVoH8/edit?usp=sharing"
+                    url = "https://railfan-copilot.web.app/privacy.html"
                 )
                 SettingsDivider()
                 LinkRow(
                     icon = Icons.Default.Gavel,
                     title = "Terms of Service",
                     subtitle = "App usage terms and conditions",
-                    url = "https://docs.google.com/document/d/12D9nfLIoCKgYhjIm2c2ljLvksKsm6n0alWkTI3IVoH8/edit?usp=sharing"
+                    url = "https://railfan-copilot.web.app/privacy.html"
                 )
                 SettingsDivider()
                 LinkRow(
@@ -519,7 +644,14 @@ fun SettingsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
                     icon = Icons.Default.Security,
                     title = "Data & Privacy",
                     subtitle = "Location, photos, and scanner audio stay on your device or are sent only to Anthropic's Claude API for AI analysis. Community sightings and spots are stored in Firebase. An anonymous device ID is used for watchlist notifications.",
-                    url = "https://docs.google.com/document/d/12D9nfLIoCKgYhjIm2c2ljLvksKsm6n0alWkTI3IVoH8/edit?usp=sharing"
+                    url = "https://railfan-copilot.web.app/privacy.html"
+                )
+                SettingsDivider()
+                LinkRow(
+                    icon = Icons.Default.BugReport,
+                    title = "Report a Bug",
+                    subtitle = "Found something broken? Let us know",
+                    url = "https://railfan-copilot.web.app/report-bug.html"
                 )
             }
         }

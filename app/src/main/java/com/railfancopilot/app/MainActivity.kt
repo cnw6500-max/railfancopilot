@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.gms.maps.MapsInitializer
+import com.google.android.gms.maps.MapsInitializer.Renderer
 import com.google.android.play.core.review.ReviewManagerFactory
 import com.google.android.play.core.review.testing.FakeReviewManager
 import com.railfancopilot.app.ui.screens.AlertsScreen
@@ -42,6 +44,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
 import com.railfancopilot.app.ui.screens.*
 import com.railfancopilot.app.ui.theme.*
+import com.railfancopilot.app.utils.Analytics
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
@@ -75,6 +78,7 @@ class MainActivity : ComponentActivity() {
             defaultHandler?.uncaughtException(thread, throwable)
         }
         try {
+            MapsInitializer.initialize(this, Renderer.LATEST, null)
             enableEdgeToEdge()
             setContent { RailFanTheme { RailFanApp() } }
         } catch (e: Exception) {
@@ -90,6 +94,8 @@ fun RailFanApp() {
     val vm: RailFanViewModel = viewModel()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(Unit) { Analytics.init(context) }
 
     // ── Play In-App Review ────────────────────────────────────────────────────
     // FakeReviewManager shows an immediate test dialog in debug builds.
@@ -126,6 +132,7 @@ fun RailFanApp() {
     // (which would otherwise fire the prompt on every cold start before DataStore loads).
     val trialDaysLeft by vm.trialDaysLeft.collectAsState()
     val isPro by vm.isProUser.collectAsState()
+    LaunchedEffect(isPro) { Analytics.setProStatus(isPro) }
     var seenNonZeroTrialDays by remember { mutableStateOf(false) }
     LaunchedEffect(trialDaysLeft) {
         if (trialDaysLeft > 0) {
@@ -250,6 +257,9 @@ fun RailFanApp() {
                 }
             }
 
+            val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+            LaunchedEffect(currentRoute) { currentRoute?.let { Analytics.screenView(it) } }
+
             NavHost(
                 navController = navController,
                 startDestination = Screen.Map.route,
@@ -261,7 +271,21 @@ fun RailFanApp() {
                 composable(Screen.Scanner.route)      { ScannerScreen(vm) }
                 composable(Screen.Decoder.route)      { DecoderScreen(vm, onUpgrade) }
                 composable(Screen.Photo.route)        { PhotoScreen(vm, onUpgrade) }
-                composable(Screen.Community.route)    { CommunityScreen(vm, onUpgrade) }
+                composable(Screen.Community.route)    {
+                    CommunityScreen(vm, onUpgrade, onNavigateToProfile = { uid ->
+                        navController.navigate("profile/$uid") { launchSingleTop = true }
+                    })
+                }
+                composable("profile/{uid}") { backStackEntry ->
+                    val uid = backStackEntry.arguments?.getString("uid") ?: ""
+                    ProfileScreen(
+                        vm, uid,
+                        onBack = { navController.popBackStack() },
+                        onNavigateToProfile = { targetUid ->
+                            navController.navigate("profile/$targetUid") { launchSingleTop = true }
+                        }
+                    )
+                }
                 composable(Screen.Alerts.route)       { AlertsScreen(vm) }
                 composable(Screen.Watchlist.route)    { WatchlistScreen(vm) }
                 composable(Screen.More.route)         {
@@ -274,7 +298,11 @@ fun RailFanApp() {
                 composable(Screen.Spots.route)          { SpotsScreen(vm, onUpgrade) }
                 composable(Screen.Trips.route)          { TripsScreen(vm) }
                 composable(Screen.Webcams.route)        { WebcamsScreen() }
-                composable(Screen.Settings.route)       { SettingsScreen(vm, onUpgrade) }
+                composable(Screen.Settings.route)       {
+                    SettingsScreen(vm, onUpgrade, onNavigateToProfile = { uid ->
+                        navController.navigate("profile/$uid") { launchSingleTop = true }
+                    })
+                }
                 composable(Screen.Upgrade.route)        {
                     UpgradeScreen(vm, onBack = { navController.popBackStack() })
                 }

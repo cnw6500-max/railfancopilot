@@ -33,6 +33,7 @@ import coil.compose.AsyncImage
 import com.railfancopilot.app.data.models.RailfanSpot
 import com.railfancopilot.app.data.models.SavedLocation
 import com.railfancopilot.app.data.models.TrainFrequency
+import com.railfancopilot.app.ui.components.shareWithPhoto
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.RailFanViewModel
 import java.text.SimpleDateFormat
@@ -47,10 +48,12 @@ fun SpotsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     val submitError     by vm.spotSubmitError.collectAsState()
     val userName        by vm.userName.collectAsState()
     val isPro           by vm.isProUser.collectAsState()
+    val currentUserId   by vm.currentUserId.collectAsState()
 
     var selectedTab     by remember { mutableIntStateOf(0) }
     var showSubmit      by remember { mutableStateOf(false) }
     var selectedSpot    by remember { mutableStateOf<RailfanSpot?>(null) }
+    var editingSpot     by remember { mutableStateOf<RailfanSpot?>(null) }
 
     val context = LocalContext.current
 
@@ -140,11 +143,16 @@ fun SpotsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     selectedSpot?.let { spot ->
         SpotDetailSheet(
             spot = spot,
+            currentUserId = currentUserId,
             onDismiss = { selectedSpot = null },
             onUpvote = { vm.upvoteSpot(spot.id) },
             onNavigate = {
                 val uri = Uri.parse("geo:${spot.latitude},${spot.longitude}?q=${spot.latitude},${spot.longitude}(${Uri.encode(spot.name)})")
                 context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            },
+            onEdit = {
+                editingSpot = spot
+                selectedSpot = null
             }
         )
     }
@@ -160,6 +168,21 @@ fun SpotsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             onSubmit = { spot, photoBytes ->
                 vm.submitSpot(spot, photoBytes)
                 showSubmit = false
+            }
+        )
+    }
+
+    // Edit dialog — reuses the submit form, pre-filled from the existing spot
+    editingSpot?.let { spot ->
+        SubmitSpotDialog(
+            userLat = userLocation?.latitude,
+            userLon = userLocation?.longitude,
+            userName = userName,
+            isSubmitting = isSubmitting,
+            initialSpot = spot,
+            onDismiss = { editingSpot = null },
+            onSubmit = { updated, newPhotoBytes ->
+                vm.editSpot(updated, newPhotoBytes, onDone = { editingSpot = null })
             }
         )
     }
@@ -201,6 +224,8 @@ private fun CommunitySpotsList(
 
 @Composable
 private fun CommunitySpotCard(spot: RailfanSpot, onClick: () -> Unit, onUpvote: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -285,6 +310,12 @@ private fun CommunitySpotCard(spot: RailfanSpot, onClick: () -> Unit, onUpvote: 
                     spot.trainFrequency.label,
                     color = TextMuted, fontSize = 11.sp, modifier = Modifier.weight(1f)
                 )
+                IconButton(
+                    onClick = { shareWithPhoto(context, scope, spotShareText(spot), spot.photoUrls.firstOrNull(), "Share spot") },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Share spot", tint = TextMuted, modifier = Modifier.size(14.dp))
+                }
                 TextButton(
                     onClick = onUpvote,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
@@ -296,6 +327,18 @@ private fun CommunitySpotCard(spot: RailfanSpot, onClick: () -> Unit, onUpvote: 
             }
         }
     }
+}
+
+private fun spotShareText(spot: RailfanSpot): String = buildString {
+    appendLine("📍 ${spot.name}")
+    if (spot.railroad.isNotBlank()) {
+        append("Railroad: ${spot.railroad}")
+        if (spot.subdivision.isNotBlank()) append(" · ${spot.subdivision}")
+        appendLine()
+    }
+    if (spot.notes.isNotBlank()) appendLine(spot.notes)
+    appendLine()
+    append("Found with Railfan Copilot")
 }
 
 @Composable
@@ -356,10 +399,15 @@ private fun PrivateSpotsList(
 @Composable
 private fun SpotDetailSheet(
     spot: RailfanSpot,
+    currentUserId: String? = null,
     onDismiss: () -> Unit,
     onUpvote: () -> Unit,
-    onNavigate: () -> Unit
+    onNavigate: () -> Unit,
+    onEdit: () -> Unit = {}
 ) {
+    val isOwner = spot.submittedByUid != null && spot.submittedByUid == currentUserId
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = BgCard,
@@ -415,6 +463,11 @@ private fun SpotDetailSheet(
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(
+                    onClick = { shareWithPhoto(context, scope, spotShareText(spot), spot.photoUrls.firstOrNull(), "Share spot") }
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Share spot", tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
                 TextButton(onClick = onUpvote) {
                     Icon(Icons.Default.ThumbUp, contentDescription = null, tint = RailBlue, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
@@ -431,7 +484,16 @@ private fun SpotDetailSheet(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = TextMuted) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isOwner) {
+                    TextButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Edit", color = TextMuted)
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Close", color = TextMuted) }
+            }
         }
     )
 }
@@ -450,25 +512,27 @@ private fun SubmitSpotDialog(
     userLon: Double?,
     userName: String,
     isSubmitting: Boolean,
+    initialSpot: RailfanSpot? = null,
     onDismiss: () -> Unit,
     onSubmit: (RailfanSpot, ByteArray?) -> Unit
 ) {
+    val isEditMode = initialSpot != null
     val context = LocalContext.current
-    var name            by remember { mutableStateOf("") }
-    var railroad        by remember { mutableStateOf("") }
-    var subdivision     by remember { mutableStateOf("") }
-    var notes           by remember { mutableStateOf("") }
-    var photoAngles     by remember { mutableStateOf("") }
-    var safetyNotes     by remember { mutableStateOf("") }
-    var parkingNotes    by remember { mutableStateOf("") }
-    var scannerFreq     by remember { mutableStateOf("") }
-    var seasonalNotes   by remember { mutableStateOf("") }
-    var trainFreq       by remember { mutableStateOf(TrainFrequency.UNKNOWN) }
-    var isPublic        by remember { mutableStateOf(true) }
-    var hasParking      by remember { mutableStateOf(false) }
-    var hasRestrooms    by remember { mutableStateOf(false) }
-    var hasFood         by remember { mutableStateOf(false) }
-    var hasShade        by remember { mutableStateOf(false) }
+    var name            by remember { mutableStateOf(initialSpot?.name ?: "") }
+    var railroad        by remember { mutableStateOf(initialSpot?.railroad ?: "") }
+    var subdivision     by remember { mutableStateOf(initialSpot?.subdivision ?: "") }
+    var notes           by remember { mutableStateOf(initialSpot?.notes ?: "") }
+    var photoAngles     by remember { mutableStateOf(initialSpot?.photoAngles ?: "") }
+    var safetyNotes     by remember { mutableStateOf(initialSpot?.safetyNotes ?: "") }
+    var parkingNotes    by remember { mutableStateOf(initialSpot?.parkingNotes ?: "") }
+    var scannerFreq     by remember { mutableStateOf(initialSpot?.scannerFrequency ?: "") }
+    var seasonalNotes   by remember { mutableStateOf(initialSpot?.seasonalNotes ?: "") }
+    var trainFreq       by remember { mutableStateOf(initialSpot?.trainFrequency ?: TrainFrequency.UNKNOWN) }
+    var isPublic        by remember { mutableStateOf(initialSpot?.isPublicProperty ?: true) }
+    var hasParking      by remember { mutableStateOf(initialSpot?.hasParking ?: false) }
+    var hasRestrooms    by remember { mutableStateOf(initialSpot?.hasRestrooms ?: false) }
+    var hasFood         by remember { mutableStateOf(initialSpot?.hasFood ?: false) }
+    var hasShade        by remember { mutableStateOf(initialSpot?.hasShade ?: false) }
     var photoBytes      by remember { mutableStateOf<ByteArray?>(null) }
     var photoLabel      by remember { mutableStateOf("") }
 
@@ -482,12 +546,12 @@ private fun SubmitSpotDialog(
     }
 
     val hasGps = userLat != null && userLon != null
-    val canSubmit = name.isNotBlank() && hasGps && !isSubmitting
+    val canSubmit = name.isNotBlank() && (isEditMode || hasGps) && !isSubmitting
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = BgCard,
-        title = { Text("Submit a Spot", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        title = { Text(if (isEditMode) "Edit Spot" else "Submit a Spot", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -588,12 +652,13 @@ private fun SubmitSpotDialog(
                     if (!canSubmit) return@Button
                     onSubmit(
                         RailfanSpot(
-                            id               = UUID.randomUUID().toString(),
+                            id               = initialSpot?.id ?: UUID.randomUUID().toString(),
                             name             = name.trim(),
-                            latitude         = userLat!!,
-                            longitude        = userLon!!,
-                            submittedBy      = userName,
-                            submittedMs      = System.currentTimeMillis(),
+                            latitude         = initialSpot?.latitude ?: userLat!!,
+                            longitude        = initialSpot?.longitude ?: userLon!!,
+                            submittedBy      = initialSpot?.submittedBy ?: userName,
+                            submittedMs      = initialSpot?.submittedMs ?: System.currentTimeMillis(),
+                            submittedByUid   = initialSpot?.submittedByUid,
                             railroad         = railroad.trim(),
                             subdivision      = subdivision.trim(),
                             notes            = notes.trim(),
@@ -607,7 +672,9 @@ private fun SubmitSpotDialog(
                             hasParking       = hasParking,
                             hasRestrooms     = hasRestrooms,
                             hasFood          = hasFood,
-                            hasShade         = hasShade
+                            hasShade         = hasShade,
+                            upvotes          = initialSpot?.upvotes ?: 0,
+                            photoUrls        = initialSpot?.photoUrls ?: emptyList()
                         ),
                         photoBytes
                     )
@@ -618,7 +685,7 @@ private fun SubmitSpotDialog(
                 if (isSubmitting) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text("Submit", color = Color.White)
+                    Text(if (isEditMode) "Save" else "Submit", color = Color.White)
                 }
             }
         },

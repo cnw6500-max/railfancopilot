@@ -48,6 +48,7 @@ import com.railfancopilot.app.ui.components.*
 import com.railfancopilot.app.ui.theme.*
 import com.railfancopilot.app.viewmodel.GeoSearchResult
 import com.railfancopilot.app.viewmodel.RailFanViewModel
+import com.railfancopilot.shared.tutorial.TutorialStep
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -165,6 +166,8 @@ fun MapScreen(vm: RailFanViewModel) {
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val screenHeight = configuration.screenHeightDp.dp
     val mapHeight = if (isLandscape) 180.dp else screenHeight * 0.42f
+
+    CoachMarkBanner(listOf(TutorialStep.LIVE_TRAINS, TutorialStep.NEARBY_SEARCH), vm)
 
     Column(modifier = Modifier.fillMaxSize()) {
 
