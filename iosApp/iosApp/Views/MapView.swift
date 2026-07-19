@@ -13,11 +13,14 @@ extension CLLocationCoordinate2D: @retroactive Equatable {
 
 struct MapView: View {
     @ObservedObject var vm: RailFanViewModel
+    @StateObject private var firestore = FirestoreManager.shared
     @State private var region = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 41.8781, longitude: -87.6298), // Chicago default
         span:   MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
     )
     @State private var selectedTrain: TrainLocation? = nil
+    @State private var selectedSighting: FirestoreSighting? = nil
+    @State private var showSightings = true
     @State private var centeredOnUser = false
 
     // Railroad filter chips
@@ -27,17 +30,67 @@ struct MapView: View {
         ("CP", "CPKC"),        ("KCS", "KCS"),    ("OTHER", "Commuter")
     ]
 
+    // Combined annotation model so both train pins and sighting pins go in one Map
+    private enum MapPin: Identifiable {
+        case train(TrainLocation)
+        case sighting(FirestoreSighting)
+        var id: String {
+            switch self {
+            case .train(let t):    return "t-\(t.id)"
+            case .sighting(let s):
+                let stableId = s.id ?? "ts\(Int(s.timestampMs))"
+                return "s-\(stableId)"
+            }
+        }
+        var coordinate: CLLocationCoordinate2D {
+            switch self {
+            case .train(let t):    return CLLocationCoordinate2D(latitude: t.latitude,    longitude: t.longitude)
+            case .sighting(let s): return CLLocationCoordinate2D(latitude: s.latitude,    longitude: s.longitude)
+            }
+        }
+    }
+
+    private var allPins: [MapPin] {
+        var pins = vm.filteredTrains.map { MapPin.train($0) }
+        if showSightings {
+            pins += firestore.sightings.map { MapPin.sighting($0) }
+        }
+        return pins
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            // Map
+            // Map — trains + sighting pins
             Map(coordinateRegion: $region,
                 showsUserLocation: true,
-                annotationItems: vm.filteredTrains) { train in
-                MapAnnotation(coordinate: CLLocationCoordinate2D(
-                    latitude:  train.latitude,
-                    longitude: train.longitude)) {
-                    TrainAnnotationView(train: train)
-                        .onTapGesture { selectedTrain = train }
+                annotationItems: allPins) { pin in
+                MapAnnotation(coordinate: pin.coordinate) {
+                    switch pin {
+                    case .train(let train):
+                        TrainAnnotationView(train: train)
+                            .onTapGesture {
+                                selectedSighting = nil
+                                selectedTrain = train
+                            }
+                    case .sighting(let sighting):
+                        Button {
+                            selectedTrain = nil
+                            selectedSighting = sighting
+                        } label: {
+                            VStack(spacing: 2) {
+                                Image(systemName: "eye.circle.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundColor(.cyan)
+                                    .shadow(color: .black.opacity(0.5), radius: 2)
+                                Text(sighting.railroad)
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 3).padding(.vertical, 1)
+                                    .background(Color.cyan.opacity(0.85))
+                                    .cornerRadius(3)
+                            }
+                        }
+                    }
                 }
             }
             .ignoresSafeArea()
@@ -55,6 +108,10 @@ struct MapView: View {
                                 vm.setRailroadFilter(
                                     vm.selectedRailroad == rr.name ? nil : rr.name)
                             }
+                        }
+                        // Sightings toggle
+                        FilterChipView(label: "👁 Sightings", selected: showSightings) {
+                            showSightings.toggle()
                         }
                     }
                     .padding(.horizontal, 12)
@@ -114,15 +171,26 @@ struct MapView: View {
                 }
             }
         }
+        .onAppear {
+            // Start sighting listener so map pins show without visiting Community tab
+            let lat = vm.userLocation?.latitude  ?? 41.8781
+            let lon = vm.userLocation?.longitude ?? -87.6298
+            firestore.startListening(lat: lat, lon: lon, radiusMiles: 200)
+        }
         .onChange(of: vm.userLocation) { loc in
             guard let loc, !centeredOnUser else { return }
             centeredOnUser = true
             region = MKCoordinateRegion(
                 center: loc,
                 span: MKCoordinateSpan(latitudeDelta: 3.0, longitudeDelta: 3.0))
+            // Restart listener with real GPS coordinates
+            firestore.startListening(lat: loc.latitude, lon: loc.longitude, radiusMiles: 200)
         }
         .sheet(item: $selectedTrain) { train in
             TrainDetailSheet(train: train)
+        }
+        .sheet(item: $selectedSighting) { sighting in
+            SightingDetailSheet(sighting: sighting, vm: vm)
         }
     }
 

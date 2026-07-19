@@ -309,8 +309,10 @@ struct PhotoView: View {
                 if let data = try? await item?.loadTransferable(type: Data.self),
                    let img  = UIImage(data: data) {
                     selectedImage = img
-                    vm.locoIdResult = nil
-                    vm.locoIdError  = nil
+                    vm.locoIdResult  = nil
+                    vm.locoIdError   = nil
+                    vm.consistResult = nil  // clear stale consist from previous image
+                    vm.consistError  = nil
                 }
             }
         }

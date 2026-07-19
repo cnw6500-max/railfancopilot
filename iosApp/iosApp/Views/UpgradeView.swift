@@ -14,8 +14,8 @@ struct UpgradeView: View {
     ]
 
     private let proFeatures: [(icon: String, title: String, desc: String)] = [
-        ("cpu",              "AI Symbol Decoder",      "Decode any freight or passenger train symbol with full route and consist info."),
         ("sparkles",         "AI Loco Identifier",     "Photograph any locomotive for instant model, railroad, and era identification."),
+        ("list.bullet.rectangle", "Consist Analyzer",  "Identify locomotive numbers, car types, and hazmat placards from a photo."),
         ("person.3.fill",    "Community Reports",      "Share sightings and browse real-time reports from nearby railfans."),
         ("bookmark.fill",    "Unlimited Saved Spots",  "Save unlimited railfan locations. Free tier includes 3."),
         ("bell.badge.fill",  "Approach Notifications", "Get alerted when trains approach your saved locations."),

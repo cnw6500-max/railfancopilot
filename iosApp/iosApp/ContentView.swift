@@ -14,12 +14,12 @@ struct ContentView: View {
                 CommunityView(vm: vm)
                     .tabItem { Label("Community", systemImage: "person.3.fill") }
 
+                DecoderView(vm: vm)
+                    .tabItem { Label("Decoder", systemImage: "cpu") }
+
                 AlertsView(vm: vm)
                     .tabItem { Label("Alerts", systemImage: "bell.fill") }
                     .badge(alertStore.unreadCount > 0 ? alertStore.unreadCount : 0)
-
-                WatchlistView(vm: vm)
-                    .tabItem { Label("Watchlist", systemImage: "bookmark.fill") }
 
                 MoreView(vm: vm)
                     .tabItem { Label("More", systemImage: "square.grid.2x2.fill") }

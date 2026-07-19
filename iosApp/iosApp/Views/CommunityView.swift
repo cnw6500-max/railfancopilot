@@ -115,9 +115,6 @@ struct CommunityView: View {
                 // Always fetch at max radius; slider does client-side filtering only
                 firestore.startListening(lat: lat, lon: lon, radiusMiles: 200)
             }
-            .onDisappear {
-                firestore.stopListening()
-            }
             .onChange(of: vm.userLocation) { newLocation in
                 // Restart listener with real coordinates once GPS becomes available
                 guard let loc = newLocation else { return }
@@ -634,9 +631,8 @@ struct AddSightingView: View {
         let lat = vm.userLocation?.latitude ?? 0.0
         let lon = vm.userLocation?.longitude ?? 0.0
         let name = effectiveReporterName
-        let photoData = selectedImage.flatMap {
-            $0.jpegData(compressionQuality: 0.8)
-        }
+        // Use photoData state var (loaded via PhotosPicker); selectedImage is unused.
+        let submitPhoto = photoData
 
         Task {
             do {
@@ -648,7 +644,7 @@ struct AddSightingView: View {
                     lat: lat,
                     lon: lon,
                     reporterName: name,
-                    photoData: photoData
+                    photoData: submitPhoto
                 )
                 isPresented = false
             } catch {

@@ -30,6 +30,11 @@ struct MoreView: View {
                             AnyView(EncyclopediaView())
                         }
                         MoreRow(icon: "bookmark.fill", color: .yellow,
+                                title: "Watchlist",
+                                subtitle: "Follow symbols and road numbers") {
+                            AnyView(WatchlistView(vm: vm))
+                        }
+                        MoreRow(icon: "mappin.circle.fill", color: .teal,
                                 title: "Saved Locations",
                                 subtitle: "Your private saved spots") {
                             AnyView(SavedLocationsView(vm: vm))
