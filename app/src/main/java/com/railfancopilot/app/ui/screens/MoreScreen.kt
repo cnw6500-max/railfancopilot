@@ -29,9 +29,9 @@ private data class MoreItem(
 
 private val MORE_ITEMS = listOf(
     MoreItem("scanner",      "Scanner",        "Live railroad radio feeds",              Icons.Default.Radio,         RailBlue),
-    MoreItem("decoder",      "Decoder",        "AI train symbol lookup",                 Icons.Default.SmartToy,      RailPurple),
     MoreItem("photo",        "Photo Tools",    "Loco ID, consist analyzer, enhancer",    Icons.Default.CameraAlt,     RailGreen),
     MoreItem("spots",        "Spots",          "Community & personal railfan locations",  Icons.Default.Place,         RailAmber),
+    MoreItem("trips",        "Trip Log",       "Log your train rides — miles & duration", Icons.Default.DirectionsRailway, RailGreen),
     MoreItem("webcams",      "Webcams",        "Live cams at famous rail locations",      Icons.Default.Videocam,      RailRed),
     MoreItem("encyclopedia", "Roster",         "North American locomotive database",      Icons.Default.Book,          RailBlue),
     MoreItem("settings",     "Settings",       "App preferences & railroad toggles",      Icons.Default.Settings,      TextMuted),

@@ -1,6 +1,7 @@
 package com.railfancopilot.app.data.models
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 // ── Train tracking ──────────────────────────────────────────────────────────
@@ -164,6 +165,7 @@ data class CommunityReport(
     @PrimaryKey val id: String,
     val userId: String,
     val userName: String,
+    val reporterUid: String? = null,   // real Firebase uid, for profile links / follow — userId above is actually the display name
     val latitude: Double,
     val longitude: Double,
     val text: String,
@@ -177,6 +179,57 @@ data class CommunityReport(
     val consist: String? = null,        // JSON-serialized List<ConsistEntry>
     val weather: String? = null,        // e.g. "72°F · Partly Cloudy · 8 mph wind"
     val locationName: String = ""       // reverse-geocoded place name
+)
+
+// ── User profiles (crowdsourced identity) ─────────────────────────────────────
+
+/**
+ * Mirrors the Firestore `users/{uid}` document. Not a Room entity — read live
+ * from the cloud, same pattern as CommunityReport.
+ */
+data class UserProfile(
+    val uid: String,
+    val username: String,        // unique handle, lowercase [a-z0-9_]{3,20}, backs follows/roster attribution
+    val displayName: String,     // free-text label shown on reports, may differ in case/spacing from username
+    val joinedMs: Long,
+    val sightingCount: Int = 0,
+    val reporterScore: Int = 0,
+    val followerCount: Int = 0,
+    val followingCount: Int = 0
+)
+
+sealed class UsernameClaimResult {
+    data object Success : UsernameClaimResult()
+    data object Taken : UsernameClaimResult()
+    data object InvalidFormat : UsernameClaimResult()
+    data class Error(val message: String) : UsernameClaimResult()
+}
+
+/** One row of `users/{uid}/following/{targetUid}` — denormalized so lists render with no extra fetches. */
+data class FollowEntry(
+    val uid: String,
+    val username: String,
+    val displayName: String,
+    val followedMs: Long
+)
+
+/**
+ * One document in the community-maintained `roster` collection — a specific
+ * numbered locomotive (not a model/class; see LocomotiveEntry for that).
+ * Doc ID is a normalized "{railroad}_{number}" key, so repeat sightings of
+ * the same unit update one shared entry instead of creating duplicates.
+ */
+data class RosterEntry(
+    val id: String,
+    val railroad: String,
+    val number: String,
+    val model: String = "",       // optional, e.g. "ES44AC"
+    val notes: String = "",       // paint scheme, special markings, corrections
+    val photoUrl: String? = null,
+    val submittedBy: String = "Railfan",
+    val submittedMs: Long = 0L,
+    val lastSeenMs: Long = 0L,
+    val upvotes: Int = 0
 )
 
 // ── Encyclopedia ─────────────────────────────────────────────────────────────
@@ -193,6 +246,97 @@ data class LocomotiveEntry(
     val notes: String,
     val imageUrl: String?
 )
+
+// ── Train trail waypoints (14-day local + cloud retention) ───────────────────
+
+/**
+ * One position sample for a live train, persisted to Room and mirrored to
+ * Firestore (train_trails/{trainId}/waypoints).
+ * Waypoints older than TRAIL_RETENTION_MS are pruned on startup.
+ */
+@Entity(
+    tableName = "train_trail_waypoints",
+    indices = [
+        Index("trainId"),
+        Index("timestampMs")
+    ]
+)
+data class TrainTrailWaypoint(
+    @PrimaryKey val id: String,
+    val trainId: String,
+    val trainSymbol: String,
+    val railroad: String,         // Railroad enum name
+    val latitude: Double,
+    val longitude: Double,
+    val speedMph: Int,
+    val timestampMs: Long
+)
+
+const val TRAIL_RETENTION_MS = 14L * 24 * 60 * 60 * 1_000L   // 14 days
+
+// ── Trip logs ─────────────────────────────────────────────────────────────────
+
+/**
+ * A single user-initiated train ride.  endMs == 0L means the trip is still
+ * in progress.  distanceMiles is accumulated in real-time from GPS updates.
+ */
+@Entity(tableName = "trip_logs")
+data class TripLog(
+    @PrimaryKey val id: String,
+    val trainId: String,
+    val trainSymbol: String,
+    val railroad: String,             // Railroad enum name
+    val startMs: Long,
+    val endMs: Long = 0L,             // 0 = active
+    val distanceMiles: Double = 0.0,
+    val boardingStation: String? = null,
+    val alightingStation: String? = null,
+    val notes: String? = null
+) {
+    val isActive get() = endMs == 0L
+    val durationMinutes get() = if (endMs > startMs) ((endMs - startMs) / 60_000).toInt() else 0
+}
+
+// ── Timetable cache ───────────────────────────────────────────────────────────
+
+/**
+ * Persists a fetched timetable (JSON-serialised stop list) so it survives
+ * app restarts and works offline for up to [TIMETABLE_CACHE_TTL_MS].
+ */
+@Entity(tableName = "timetable_cache")
+data class TimetableCacheEntry(
+    @PrimaryKey val trainId: String,
+    /** Gson-serialised List<TimetableStop> */
+    val stopsJson: String,
+    val fetchedMs: Long
+)
+
+const val TIMETABLE_CACHE_TTL_MS = 24L * 60 * 60 * 1_000L   // 24 hours
+
+// ── Timetable ────────────────────────────────────────────────────────────────
+
+/**
+ * One station stop in an Amtrak train's timetable.
+ * Times are pre-formatted strings (e.g. "3:42 PM") ready for display.
+ */
+data class TimetableStop(
+    val code: String,
+    val scheduledArrival: String?,
+    val scheduledDeparture: String?,
+    val actualArrival: String?,
+    val actualDeparture: String?,
+    /** e.g. "On Time", "4 Min Late", "Cancelled" — null if no info */
+    val arrivalStatus: String?,
+    val departureStatus: String?,
+    val isBusThruway: Boolean,
+    /** Train has already departed this stop */
+    val hasDeparted: Boolean,
+    /** Train has already arrived at this stop */
+    val hasArrived: Boolean
+) {
+    /** True when this is a bus substitution segment, not rail. */
+    val isRail get() = !isBusThruway
+}
 
 // ── Saved locations ──────────────────────────────────────────────────────────
 
@@ -256,6 +400,7 @@ data class RailfanSpot(
     val longitude: Double,
     val submittedBy: String,
     val submittedMs: Long,
+    val submittedByUid: String? = null,   // owner check for edit — submittedBy is just a display name
     val railroad: String = "",
     val subdivision: String = "",
     val notes: String = "",

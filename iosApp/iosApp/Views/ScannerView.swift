@@ -59,6 +59,65 @@ struct ScannerView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
 
+                    // Live Cams
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "video.fill").foregroundColor(.railBlue)
+                            Text("Live Railcams").font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.textPrimary)
+                            Spacer()
+                            Text("Virtual Railfan").font(.system(size: 11)).foregroundColor(.textMuted)
+                        }
+
+                        let cams: [(name: String, url: String)] = [
+                            ("Rochelle, IL — BNSF/UP Diamond", "https://www.youtube.com/watch?v=LhNpn9L5ndM"),
+                            ("Kearney, NE — BNSF Platte Valley", "https://www.youtube.com/watch?v=23tmCNeFh7A"),
+                            ("Flagstaff, AZ — BNSF Transcon", "https://www.youtube.com/watch?v=7xdHH9KMSVk"),
+                            ("Tucson, AZ — UP Sunset Route", "https://www.youtube.com/watch?v=-Q9VQJdqIlk"),
+                            ("Folkston, GA — CSX Funnel", "https://www.youtube.com/watch?v=xKUkjFJkKgc"),
+                        ]
+
+                        ForEach(cams, id: \.url) { cam in
+                            Button {
+                                if let url = URL(string: cam.url) { UIApplication.shared.open(url) }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "play.rectangle.fill")
+                                        .foregroundColor(.red).font(.system(size: 18))
+                                    Text(cam.name).font(.system(size: 13)).foregroundColor(.textPrimary)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right").foregroundColor(.textMuted)
+                                        .font(.system(size: 12))
+                                }
+                                .padding(10).background(Color.bgCard).cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.borderLight, lineWidth: 0.5))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button {
+                            if let url = URL(string: "https://www.youtube.com/@VirtualRailfan/streams") {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            HStack {
+                                Text("Browse all cameras →").font(.system(size: 13))
+                                    .foregroundColor(.railBlue)
+                                Spacer()
+                                Image(systemName: "arrow.up.right").foregroundColor(.railBlue)
+                                    .font(.system(size: 12))
+                            }
+                            .padding(10).background(Color.bgCard).cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.borderLight, lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+
                     // AAR Frequency list
                     List(filteredChannels, id: \.id) { channel in
                         ChannelRow(channel: channel)

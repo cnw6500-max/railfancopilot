@@ -46,4 +46,14 @@ class FirebaseFunctionsClient {
         }
         return text
     }
+
+    func lookupLocoNumber(roadNumber: String) async throws -> String {
+        let data: [String: Any] = ["roadNumber": roadNumber]
+        let result = try await functions.httpsCallable("lookupLocoNumber").call(data)
+        guard let map = result.data as? [String: Any], let text = map["text"] as? String else {
+            throw NSError(domain: "FirebaseFunctionsClient", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Unexpected response from lookupLocoNumber"])
+        }
+        return text
+    }
 }

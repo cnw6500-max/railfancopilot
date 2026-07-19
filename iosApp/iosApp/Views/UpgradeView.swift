@@ -103,8 +103,8 @@ struct UpgradeView: View {
                     }
                     .padding(.horizontal)
 
-                    if vm.isPremium {
-                        // Already premium
+                    if vm.isPurchased {
+                        // Already purchased permanently
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.system(size: 48))
@@ -123,6 +123,34 @@ struct UpgradeView: View {
                         .padding(.horizontal)
 
                     } else {
+                        // Trial banner
+                        if vm.isInTrial {
+                            HStack(spacing: 12) {
+                                Image(systemName: "timer")
+                                    .foregroundColor(.green)
+                                    .font(.system(size: 18))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Free trial active")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.green)
+                                    Text(vm.trialDaysLeft > 1
+                                         ? "\(vm.trialDaysLeft) days remaining"
+                                         : vm.trialDaysLeft == 1
+                                         ? "Last day — expires tomorrow"
+                                         : "Expires today")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.textMuted)
+                                }
+                                Spacer()
+                            }
+                            .padding(14)
+                            .background(Color.green.opacity(0.12))
+                            .cornerRadius(12)
+                            .overlay(RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.green.opacity(0.3), lineWidth: 0.5))
+                            .padding(.horizontal)
+                        }
+
                         // Purchase section
                         VStack(spacing: 12) {
 
@@ -163,7 +191,9 @@ struct UpgradeView: View {
                                         HStack(spacing: 8) {
                                             Image(systemName: "star.fill")
                                                 .foregroundColor(.yellow)
-                                            Text("Upgrade to Pro — \(store.formattedPrice)")
+                                            Text(vm.isInTrial
+                                                 ? "Unlock Pro Permanently — \(store.formattedPrice)"
+                                                 : "Upgrade to Pro — \(store.formattedPrice)")
                                                 .font(.system(size: 16, weight: .bold))
                                         }
                                     }

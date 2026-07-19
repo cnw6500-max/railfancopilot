@@ -64,15 +64,28 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 @Composable
-fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
+fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}, onNavigateToProfile: (String) -> Unit = {}) {
     val isPro by vm.isProUser.collectAsState()
     val reports by vm.communityReports.collectAsState()
     val safetyAlerts by vm.safetyAlerts.collectAsState()
     val userLocation by vm.userLocation.collectAsState()
     val radiusMiles by vm.reportRadiusMiles.collectAsState()
     val locos by vm.locomotives.collectAsState()
+    val following by vm.following.collectAsState()
+    val userProfile by vm.userProfile.collectAsState()
+    val currentUserId by vm.currentUserId.collectAsState()
     var showSubmitDialog by remember { mutableStateOf(false) }
     var showProGate by remember { mutableStateOf(false) }
+    var showFollowingOnly by remember { mutableStateOf(false) }
+    var claimBannerDismissed by remember { mutableStateOf(false) }
+    var editingReport by remember { mutableStateOf<CommunityReport?>(null) }
+    val isEditingReport by vm.isEditingReport.collectAsState()
+
+    val followingUids = remember(following) { following.map { it.uid }.toSet() }
+    val visibleReports = remember(reports, showFollowingOnly, followingUids) {
+        if (showFollowingOnly) reports.filter { it.reporterUid != null && it.reporterUid in followingUids }
+        else reports
+    }
 
     // Tick every 60 s so "5 min ago" labels stay fresh while the screen is open
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -111,6 +124,35 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             }
         }
 
+        // Claim-username nudge — shown once per session until dismissed or claimed
+        if (!claimBannerDismissed && currentUserId != null && userProfile?.username.isNullOrBlank()) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AlertBgInfo)
+                        .border(0.5.dp, RailBlueDark, RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.AlternateEmail, null, tint = RailBlue, modifier = Modifier.size(18.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Claim your username", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("Set a handle so others can follow you", color = TextSecondary, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { currentUserId?.let(onNavigateToProfile) }) {
+                        Text("Claim", color = RailBlue, fontSize = 12.sp)
+                    }
+                    IconButton(onClick = { claimBannerDismissed = true }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = TextMuted, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
         // Radius filter chips
         item {
             Row(
@@ -143,22 +185,36 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             }
         }
 
+        // All / Following filter tab
         item {
-            SectionHeader("Recent sightings (${reports.size})")
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FilterChip("All", !showFollowingOnly) { showFollowingOnly = false }
+                FilterChip("Following", showFollowingOnly) { showFollowingOnly = true }
+            }
         }
 
-        items(reports) { report ->
+        item {
+            SectionHeader("Recent sightings (${visibleReports.size})")
+        }
+
+        items(visibleReports) { report ->
             ReportCard(
                 report      = report,
                 userLocation = userLocation,
                 nowMs       = nowMs,
                 onDelete    = { vm.deleteReport(it.id) },
                 onGetCommentsFlow = { vm.getCommentsFlow(it) },
-                onPostComment     = { id, text -> vm.postComment(id, text) }
+                onPostComment     = { id, text -> vm.postComment(id, text) },
+                onNavigateToProfile = onNavigateToProfile,
+                currentUserId = currentUserId,
+                onEdit = { editingReport = it }
             )
         }
 
-        if (reports.isEmpty()) {
+        if (visibleReports.isEmpty()) {
             item {
                 EmptyState(
                     icon = Icons.Default.ChatBubbleOutline,
@@ -220,6 +276,74 @@ fun CommunityScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             }
         )
     }
+
+    editingReport?.let { report ->
+        EditReportDialog(
+            report = report,
+            isSaving = isEditingReport,
+            onDismiss = { editingReport = null },
+            onSave = { text, symbol, rr ->
+                vm.editReport(report.id, text, symbol, rr, onDone = { editingReport = null })
+            }
+        )
+    }
+}
+
+@Composable
+private fun EditReportDialog(
+    report: CommunityReport,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (text: String, symbol: String?, railroad: String?) -> Unit
+) {
+    var text by remember { mutableStateOf(report.text) }
+    var symbol by remember { mutableStateOf(report.trainSymbol ?: "") }
+    var railroad by remember { mutableStateOf(report.railroad ?: "") }
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextPrimary,
+        unfocusedTextColor = TextPrimary,
+        focusedBorderColor = RailBlue,
+        unfocusedBorderColor = TextMuted
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BgCard,
+        title = { Text("Edit sighting", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it },
+                    label = { Text("Notes", color = TextMuted, fontSize = 12.sp) },
+                    modifier = Modifier.fillMaxWidth(), colors = fieldColors
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = symbol, onValueChange = { symbol = it },
+                        label = { Text("Symbol", color = TextMuted, fontSize = 12.sp) },
+                        singleLine = true, modifier = Modifier.weight(1f), colors = fieldColors
+                    )
+                    OutlinedTextField(
+                        value = railroad, onValueChange = { railroad = it },
+                        label = { Text("Railroad", color = TextMuted, fontSize = 12.sp) },
+                        singleLine = true, modifier = Modifier.weight(1f), colors = fieldColors
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(text, symbol.ifBlank { null }, railroad.ifBlank { null }) },
+                enabled = !isSaving && text.isNotBlank()
+            ) {
+                Text(if (isSaving) "Saving…" else "Save", color = RailBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = TextMuted) }
+        }
+    )
 }
 
 @Composable
@@ -229,7 +353,10 @@ fun ReportCard(
     nowMs: Long = System.currentTimeMillis(),
     onDelete: ((CommunityReport) -> Unit)? = null,
     onGetCommentsFlow: ((String) -> kotlinx.coroutines.flow.Flow<List<SightingComment>>)? = null,
-    onPostComment: ((String, String) -> Unit)? = null
+    onPostComment: ((String, String) -> Unit)? = null,
+    onNavigateToProfile: (String) -> Unit = {},
+    currentUserId: String? = null,
+    onEdit: (CommunityReport) -> Unit = {}
 ) {
     val context = LocalContext.current
     val gson = remember { Gson() }
@@ -307,16 +434,28 @@ fun ReportCard(
 
         Row(verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(RailBlueDark),
-                contentAlignment = Alignment.Center) {
-                Text(report.userName.take(2).ifEmpty { "?" }.uppercase(), color = RailBlue, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            }
-            Text(report.userName, color = TextSecondary, fontSize = 12.sp)
-            if (report.isVerified) {
-                Icon(Icons.Default.Verified, contentDescription = "Verified user", tint = RailBlue, modifier = Modifier.size(14.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(
+                        if (report.reporterUid != null)
+                            Modifier.clickable { onNavigateToProfile(report.reporterUid) }
+                        else Modifier
+                    )
+            ) {
+                Box(modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(RailBlueDark),
+                    contentAlignment = Alignment.Center) {
+                    Text(report.userName.take(2).ifEmpty { "?" }.uppercase(), color = RailBlue, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+                Text(report.userName, color = TextSecondary, fontSize = 12.sp)
+                if (report.isVerified) {
+                    Icon(Icons.Default.Verified, contentDescription = "Verified user", tint = RailBlue, modifier = Modifier.size(14.dp))
+                }
             }
             Spacer(Modifier.weight(1f))
             if (distanceLabel != null) {
@@ -473,8 +612,8 @@ fun ReportCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(comment.userName, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                            val commentAgo = remember(comment.timestampMs) {
-                                val diff = System.currentTimeMillis() - comment.timestampMs
+                            val commentAgo = remember(comment.timestampMs, nowMs) {
+                                val diff = nowMs - comment.timestampMs
                                 when {
                                     diff < TimeUnit.MINUTES.toMillis(60) -> "${TimeUnit.MILLISECONDS.toMinutes(diff)}m"
                                     diff < TimeUnit.HOURS.toMillis(24)   -> "${TimeUnit.MILLISECONDS.toHours(diff)}h"
@@ -544,7 +683,20 @@ fun ReportCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
-            if (onDelete != null) {
+            if (report.reporterUid != null && report.reporterUid == currentUserId) {
+                IconButton(
+                    onClick = { onEdit(report) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit sighting",
+                        tint = TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            if (onDelete != null && report.reporterUid != null && report.reporterUid == currentUserId) {
                 IconButton(
                     onClick = { showDeleteDialog = true },
                     modifier = Modifier.size(32.dp)
@@ -567,14 +719,8 @@ fun ReportCard(
                         appendLine()
                         append("Spotted with Railfan Copilot")
                     }
-                    context.startActivity(
-                        Intent.createChooser(
-                            Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, shareText)
-                            }, "Share sighting"
-                        )
-                    )
+                    val photoUrl = report.localPhotoPath?.takeIf { it.startsWith("https://") }
+                    shareWithPhoto(context, commentScope, shareText, photoUrl, "Share sighting")
                 },
                 modifier = Modifier.size(32.dp)
             ) {

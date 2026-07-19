@@ -22,8 +22,8 @@ android {
         applicationId = "com.railfancopilot.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "2.5.7"
+        versionCode = 39
+        versionName = "2.7.0"
 
         val mapsKey = localProps.getProperty("MAPS_API_KEY") ?: ""
         manifestPlaceholders["MAPS_API_KEY"] = mapsKey
@@ -45,6 +45,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            val debugMapsKey = localProps.getProperty("MAPS_API_KEY_DEBUG") ?: ""
+            manifestPlaceholders["MAPS_API_KEY"] = debugMapsKey
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -66,6 +70,9 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
+    // Force fragment to latest to resolve Play Console SDK warning
+    implementation("androidx.fragment:fragment-ktx:1.8.6")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -96,6 +103,8 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.play.review)
     implementation(libs.play.billing.ktx)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
     // Firebase — Firestore (shared community feed with iOS) + Functions (API proxy)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
@@ -103,6 +112,7 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.storage)
+    implementation(libs.firebase.analytics)
     implementation(libs.coroutines.play.services)
     // GTFS-Realtime vehicle positions are parsed with a built-in zero-dependency
     // protobuf reader (GtfsRtProtoParser) — no external bindings library needed.

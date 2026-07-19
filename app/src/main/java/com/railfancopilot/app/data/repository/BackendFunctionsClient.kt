@@ -40,6 +40,13 @@ object BackendFunctionsClient {
         return map["text"] as? String ?: error("Missing 'text' in identifyLocomotive response")
     }
 
+    // ── AI: locomotive number lookup ──────────────────────────────────────────
+
+    suspend fun lookupLocoNumber(roadNumber: String): String {
+        val map = call("lookupLocoNumber", hashMapOf("roadNumber" to roadNumber))
+        return map["text"] as? String ?: error("Missing 'text' in lookupLocoNumber response")
+    }
+
     // ── AI: consist analyzer ─────────────────────────────────────────────────
 
     suspend fun analyzeConsist(base64Image: String): String {

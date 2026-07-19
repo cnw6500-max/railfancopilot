@@ -52,12 +52,15 @@ private val PRO_FEATURES = listOf(
 
 @Composable
 fun UpgradeScreen(vm: RailFanViewModel, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val isPro by vm.isProUser.collectAsState()
+    val context      = LocalContext.current
+    val isPurchased  by vm.isPurchased.collectAsState()
+    val isInTrial    by vm.isInTrial.collectAsState()
+    val trialDaysLeft by vm.trialDaysLeft.collectAsState()
 
-    // Auto-dismiss once purchase completes
-    LaunchedEffect(isPro) {
-        if (isPro) onBack()
+    // Auto-dismiss only when an actual purchase completes, not on trial state
+    val wasNotPurchasedAtOpen = remember { !isPurchased }
+    LaunchedEffect(isPurchased) {
+        if (isPurchased && wasNotPurchasedAtOpen) onBack()
     }
 
     LazyColumn(
@@ -79,6 +82,40 @@ fun UpgradeScreen(vm: RailFanViewModel, onBack: () -> Unit) {
                     color = TextMuted,
                     fontSize = 13.sp
                 )
+            }
+        }
+
+        // Trial banner
+        if (isInTrial && !isPurchased) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(StatusBgGreen)
+                        .border(0.5.dp, RailGreen.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.Timer, contentDescription = null,
+                        tint = RailGreen, modifier = Modifier.size(20.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Free trial active",
+                            color = RailGreen,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            if (trialDaysLeft > 1) "$trialDaysLeft days remaining"
+                            else if (trialDaysLeft == 1) "Last day — expires tomorrow"
+                            else "Expires today",
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
 

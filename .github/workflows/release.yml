@@ -1,0 +1,78 @@
+name: Build & Sign Release APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:          # allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── Java 17 ─────────────────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # ── Decode keystore from GitHub Secret ───────────────────────────────────
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/railfan-release.jks
+
+      # ── Decode google-services.json (required by Firebase Gradle plugin) ─────
+      - name: Decode google-services.json
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/app/google-services.json
+
+      # ── Write local.properties ────────────────────────────────────────────────
+      - name: Write local.properties
+        run: |
+          cat > local.properties <<EOF
+          MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}
+          KEYSTORE_FILE=$GITHUB_WORKSPACE/railfan-release.jks
+          KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS=${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      # ── Grant Gradle execute permission ──────────────────────────────────────
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # ── Build release APK ────────────────────────────────────────────────────
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+
+      # ── Upload build log on failure ───────────────────────────────────────────
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: build.log
+          retention-days: 7
+
+      # ── Upload APK as artifact ───────────────────────────────────────────────
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: railfan-copilot-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # ── Upload mapping file (for Play Console crash deobfuscation) ───────────
+      - name: Upload ProGuard mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: railfan-copilot-mapping-${{ github.run_number }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          retention-days: 30
+          if-no-files-found: ignore

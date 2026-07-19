@@ -34,6 +34,7 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
+            implementation(libs.multiplatform.settings)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.android)

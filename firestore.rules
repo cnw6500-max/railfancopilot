@@ -23,12 +23,20 @@ service cloud.firestore {
                     && request.resource.data.reporterName is string
                     && request.resource.data.reporterName.size() <= 100;
 
-      // Only allow upvote increments (no other field changes)
+      // Only allow upvote increments (no other field changes)...
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
-                    && request.resource.data.upvotes == resource.data.upvotes + 1;
+                    && request.resource.data.upvotes == resource.data.upvotes + 1
+                    // ...or the original reporter editing notes/trainSymbol/railroad (never
+                    // location, timestamp, upvotes, or who reported it).
+                    || (request.auth != null
+                        && resource.data.reporterUid == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['notes', 'trainSymbol', 'railroad'])
+                        && request.resource.data.notes is string
+                        && request.resource.data.notes.size() <= 1000);
 
-      // No client-side deletes
-      allow delete: if false;
+      // Only the original reporter can delete their own sighting.
+      allow delete: if request.auth != null && resource.data.reporterUid == request.auth.uid;
     }
 
     // Community railfan spots — readable by all, writable by authenticated users
@@ -44,17 +52,88 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'photoUrls'])
                     && request.resource.data.upvotes == resource.data.upvotes + 1
-                       || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoUrls']);
+                       || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoUrls'])
+                       // ...or the original submitter editing their own content fields (never
+                       // latitude/longitude/submittedBy/submittedMs/submittedByUid/upvotes).
+                       || (request.auth != null
+                           && resource.data.submittedByUid == request.auth.uid
+                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                                'name', 'railroad', 'subdivision', 'notes', 'photoAngles',
+                                'safetyNotes', 'parkingNotes', 'scannerFrequency', 'seasonalNotes',
+                                'trainFrequency', 'isPublicProperty', 'hasParking', 'hasRestrooms',
+                                'hasFood', 'hasShade', 'photoUrls'
+                              ])
+                           && request.resource.data.name is string
+                           && request.resource.data.name.size() > 0
+                           && request.resource.data.name.size() <= 200);
       allow delete: if false;
     }
 
-    // Per-user data — FCM token + watchlist. Each user can only access their own doc.
+    // Per-user data — FCM token, profile, watchlist, following.
+    // Profile fields (username/displayName/joinedMs/sightingCount/followerCount/
+    // followingCount) are meant to be public; read is open to any authenticated
+    // user so profiles/followers are viewable. Only the owner can write, except
+    // followerCount, which any authenticated user may nudge by exactly ±1 —
+    // mirrors the upvotes-only carve-out on /sightings below.
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followerCount'])
+                    && (request.resource.data.followerCount == resource.data.followerCount + 1
+                        || request.resource.data.followerCount == resource.data.followerCount - 1);
 
       match /watchlist/{entryId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
+
+      match /following/{targetUid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Mirror of the follower's own /following entry, nested under the
+      // person being followed so their followers list is a single-collection
+      // read. The writer is the follower (followerUid), not the doc owner —
+      // matches followUser()'s batch write in FirestoreProfileRepo.kt.
+      match /followers/{followerUid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == followerUid;
+      }
+    }
+
+    // Community roster — one doc per real, numbered locomotive (id = normalized
+    // "railroad_number"). Readable by all. Any authenticated user may create a
+    // new unit or nudge upvotes by exactly ±1 (mirrors /sightings and
+    // /railfan_spots), or submit a correction limited to model/notes/photoUrl/
+    // lastSeenMs — never railroad/number/submittedBy/submittedMs/upvotes, so a
+    // correction can't rewrite who logged the unit or its vote count.
+    match /roster/{entryId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['railroad', 'number', 'lastSeenMs'])
+                    && request.resource.data.railroad is string
+                    && request.resource.data.number is string
+                    && request.resource.data.number.size() > 0
+                    && request.resource.data.number.size() <= 20;
+      allow update: if request.auth != null
+                    && (
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
+                       && request.resource.data.upvotes == resource.data.upvotes + 1)
+                      || request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['railroad', 'number', 'model', 'notes', 'photoUrl', 'lastSeenMs'])
+                    );
+      allow delete: if false;
+    }
+
+    // Username uniqueness index — doc ID is the normalized handle, value is the owning uid.
+    // Renames go through delete (old handle) + create (new handle) in one transaction.
+    match /usernames/{username} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['uid'])
+                    && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
     // Comments on sightings — any authenticated user can read/write
@@ -66,6 +145,22 @@ service cloud.firestore {
                     && request.resource.data.text.size() > 0
                     && request.resource.data.text.size() <= 500;
       allow delete: if false;
+    }
+
+    // Bug/error reports submitted from the public website (report-bug.html).
+    // Write-only from clients — nobody can read, edit, or delete a report except
+    // via the Firebase Console / Admin SDK. No auth required, same as /sightings'
+    // create rule, since anonymous website visitors aren't signed into the app.
+    match /bug_reports/{reportId} {
+      allow read, update, delete: if false;
+      allow create: if request.resource.data.keys().hasAll(['title', 'description', 'timestampMs'])
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.title.size() <= 200
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() > 0
+                    && request.resource.data.description.size() <= 5000
+                    && request.resource.data.timestampMs is number;
     }
 
     // Deny everything else

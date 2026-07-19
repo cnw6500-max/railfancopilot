@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Privacy Policy — Railfan Copilot</title>
+<meta name="description" content="Railfan Copilot's privacy policy: what data we collect, why, and your rights." />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a href="index.html" class="brand"><span class="mark">RC</span> Railfan Copilot</a>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="support.html">Support</a>
+      <a href="report-bug.html">Report a bug</a>
+      <a href="privacy.html" class="active">Privacy</a>
+    </nav>
+  </div>
+</header>
+
+<div class="page-header wrap">
+  <h1>Privacy Policy</h1>
+</div>
+
+<main class="content wrap">
+  <span class="updated-badge">Last updated: May 22, 2026</span>
+
+  <div class="card">
+    <h2>1. Overview</h2>
+    <p>Railfan Copilot ("the app", "we", "us") is a railfan utility application for Android and iOS. This policy explains what data we collect, how we use it, and your rights regarding that data.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Data we collect</h2>
+
+    <h3>2.1 Location</h3>
+    <p><strong>What:</strong> Precise GPS coordinates (latitude/longitude)</p>
+    <p><strong>Why:</strong> To show nearby trains on the map, sort scanner feeds by proximity, tag community sighting reports, and send proximity alerts when trains approach your saved locations</p>
+    <p><strong>When:</strong> While the app is in use (foreground). Background location is used only to send approach alerts when the app is closed, and only if you grant "Allow all the time" permission</p>
+    <p><strong>Stored:</strong> Your current location is never permanently stored by us. Sighting reports you submit include your GPS coordinates and are stored in Google Firebase</p>
+
+    <h3>2.2 Photos</h3>
+    <p><strong>What:</strong> Photos you choose to submit for AI analysis</p>
+    <p><strong>Why:</strong> To identify locomotives, analyze consists, and enhance photos using Anthropic's Claude AI</p>
+    <p><strong>Stored:</strong> Photos sent for AI analysis are transmitted to Anthropic's API and are not stored by us. Photos you attach to community sighting reports, railfan spots, or roster entries are stored in Google Firebase Storage</p>
+
+    <h3>2.3 Anonymous device ID</h3>
+    <p><strong>What:</strong> A randomly generated anonymous identifier assigned by Firebase Authentication on first launch</p>
+    <p><strong>Why:</strong> To associate your watchlist, profile, and follows with your device so we can deliver push notifications and power social features</p>
+    <p><strong>Stored:</strong> This ID is stored in Google Firebase. It contains no personal information — no name, email, or account, unless you choose to claim a public username</p>
+    <p><strong>Reset:</strong> Uninstalling and reinstalling the app generates a new ID and clears your watchlist and profile</p>
+
+    <h3>2.4 Push notification token (FCM token)</h3>
+    <p><strong>What:</strong> A device token issued by Google Firebase Cloud Messaging</p>
+    <p><strong>Why:</strong> To deliver watchlist alerts, approach notifications, and nearby-sighting alerts to your device</p>
+    <p><strong>Stored:</strong> Stored in Google Firebase alongside your anonymous device ID</p>
+
+    <h3>2.5 Community content</h3>
+    <p><strong>What:</strong> Sighting reports, comments, railfan spot submissions, roster entries, and upvotes you submit</p>
+    <p><strong>Why:</strong> To power the community feed and shared locomotive roster visible to all app users</p>
+    <p><strong>Stored:</strong> Stored in Google Firebase Firestore and Firebase Storage. Community content is public and visible to all users of the app</p>
+
+    <h3>2.6 Public profile (optional)</h3>
+    <p><strong>What:</strong> A username you choose to claim, display name, and follower/following relationships</p>
+    <p><strong>Why:</strong> To let other railfans find, follow, and recognize your contributions</p>
+    <p><strong>Stored:</strong> Stored in Google Firebase and visible to any authenticated user of the app. Claiming a username is optional</p>
+
+    <h3>2.7 In-app purchases</h3>
+    <p><strong>What:</strong> Purchase records for Railfan Copilot Pro</p>
+    <p><strong>Why:</strong> To verify Pro status and unlock Pro features</p>
+    <p><strong>Stored:</strong> Purchase history is managed by Google Play Billing / Apple's App Store. We receive only a confirmation of purchase — we do not receive your payment details</p>
+
+    <h3>2.8 App preferences</h3>
+    <p><strong>What:</strong> Settings such as refresh interval, railroad toggles, display name, and alert preferences</p>
+    <p><strong>Why:</strong> To persist your configuration between sessions</p>
+    <p><strong>Stored:</strong> Locally on your device. Not transmitted to any server, except where a preference (like nearby-alert settings) requires server-side delivery</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Third-party services</h2>
+    <table>
+      <tr><th>Service</th><th>Purpose</th><th>Privacy policy</th></tr>
+      <tr><td>Google Firebase (Firestore, Storage, Auth, Cloud Messaging, Cloud Functions, Hosting)</td><td>Community data storage, anonymous auth, push notifications, AI API proxy, this website</td><td><a href="https://firebase.google.com/support/privacy">firebase.google.com/support/privacy</a></td></tr>
+      <tr><td>Anthropic Claude API</td><td>AI locomotive identification, consist analysis, train symbol decoding</td><td><a href="https://www.anthropic.com/privacy">anthropic.com/privacy</a></td></tr>
+      <tr><td>Google Maps SDK</td><td>Interactive map display</td><td><a href="https://policies.google.com/privacy">policies.google.com/privacy</a></td></tr>
+      <tr><td>Google Play Billing / Apple App Store</td><td>In-app purchases</td><td><a href="https://policies.google.com/privacy">policies.google.com/privacy</a></td></tr>
+      <tr><td>OpenRailwayMap / OpenStreetMap</td><td>Railroad infrastructure map overlay tiles</td><td><a href="https://wiki.osmfoundation.org/wiki/Privacy_Policy">osmfoundation.org privacy policy</a></td></tr>
+      <tr><td>Nominatim (OpenStreetMap)</td><td>Reverse geocoding for city names in approach alerts</td><td><a href="https://nominatim.org/release-docs/latest/api/Reverse/">nominatim.org</a></td></tr>
+      <tr><td>Railroad scanner streams (railroadradio.net and others)</td><td>Live railroad radio audio</td><td>Streamed over standard HTTP audio — no personal data transmitted</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>4. Data we do NOT collect</h2>
+    <ul>
+      <li>Your name, email address, or any account credentials (unless voluntarily provided, e.g. in a bug report)</li>
+      <li>Browsing history or activity outside the app</li>
+      <li>Contacts or call logs</li>
+      <li>Payment card or financial information</li>
+      <li>Persistent device identifiers (IMEI, IDFA, etc.)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>5. Scanner audio</h2>
+    <p>Live railroad scanner audio is streamed directly from public radio sources (such as railroadradio.net) over standard HTTP connections. This is an industry-standard protocol for public scanner audio feeds. No personal data is transmitted over these connections. Audio is not recorded or stored by the app.</p>
+  </div>
+
+  <div class="card">
+    <h2>6. Data retention</h2>
+    <table>
+      <tr><th>Data type</th><th>Retention</th></tr>
+      <tr><td>Community sightings, comments, roster entries</td><td>Stored indefinitely unless deleted by us for policy violations, or by you</td></tr>
+      <tr><td>Railfan spot submissions</td><td>Stored indefinitely</td></tr>
+      <tr><td>Spot, sighting, and roster photos</td><td>Stored indefinitely in Firebase Storage</td></tr>
+      <tr><td>Anonymous device ID, FCM token, profile</td><td>Retained until you uninstall the app or we delete inactive records</td></tr>
+      <tr><td>App preferences</td><td>Stored locally; deleted when app is uninstalled</td></tr>
+      <tr><td>AI analysis photos</td><td>Not retained — transmitted to Anthropic and discarded</td></tr>
+      <tr><td>Bug reports submitted via this website</td><td>Retained until resolved; email address (if provided) used only for follow-up</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>7. Data security</h2>
+    <ul>
+      <li>All communication between the app and Firebase/Anthropic uses HTTPS</li>
+      <li>Railroad scanner audio streams use HTTP (required by source providers — no personal data involved)</li>
+      <li>Firebase security rules restrict access so users can only read/write their own watchlist, profile, and following data</li>
+      <li>Community content is publicly readable but write-protected by Firebase authentication and field-level rules</li>
+      <li>App backup is disabled — your local preferences and history are not backed up to Google or transferred to other devices</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>8. Children's privacy</h2>
+    <p>Railfan Copilot is not directed at children under 13. We do not knowingly collect personal information from children under 13. If you believe a child has submitted personal information through the app, please contact us.</p>
+  </div>
+
+  <div class="card">
+    <h2>9. Your rights</h2>
+    <p>You may:</p>
+    <ul>
+      <li><strong>Delete community content</strong> — most sightings, spots, and roster corrections can be deleted or edited directly from the app; contact us for anything you can't remove yourself</li>
+      <li><strong>Reset your anonymous ID</strong> — uninstall and reinstall the app</li>
+      <li><strong>Disable location</strong> — revoke location permission in your device Settings at any time. Core map and alert features will not function without it</li>
+      <li><strong>Disable notifications</strong> — revoke notification permission in your device Settings</li>
+      <li><strong>Request data deletion</strong> — contact us at the address below</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>10. Refunds</h2>
+    <p><strong>Google Play:</strong> In-app purchases can be refunded through Google Play within 48 hours of purchase. Open Google Play → profile icon → Payments &amp; subscriptions → Order history → Request a refund.</p>
+    <p><strong>App Store:</strong> Refunds are handled by Apple at <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>.</p>
+  </div>
+
+  <div class="card">
+    <h2>11. Changes to this policy</h2>
+    <p>We may update this policy as new features are added. The "Last updated" date at the top will reflect any changes. Continued use of the app after changes constitutes acceptance of the updated policy.</p>
+  </div>
+
+  <div class="card">
+    <h2>12. Contact</h2>
+    <p>For privacy questions or data deletion requests:</p>
+    <p><strong>Email:</strong> <a href="mailto:ratt.dawg@gmail.com">ratt.dawg@gmail.com</a></p>
+  </div>
+
+  <p style="text-align:center; color: var(--text-muted); font-size: 0.85rem; font-style: italic;">Railfan Copilot is an independent app and is not affiliated with any railroad company, Amtrak, or transit agency.</p>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div>&copy; 2026 Railfan Copilot. Not affiliated with any railroad, Amtrak, or transit agency.</div>
+    <div class="links">
+      <a href="support.html">Support</a>
+      <a href="report-bug.html">Report a bug</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="mailto:ratt.dawg@gmail.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

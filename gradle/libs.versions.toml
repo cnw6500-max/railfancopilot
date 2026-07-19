@@ -25,9 +25,11 @@ permissions = "0.34.0"
 media3 = "1.5.1"
 gson = "2.11.0"
 playReview = "2.0.2"
+glance = "1.1.1"
 billing = "7.1.1"
 firebaseBom = "33.7.0"
 googleServices = "4.4.2"
+multiplatformSettings = "1.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -60,6 +62,8 @@ media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", versi
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 play-review = { group = "com.google.android.play", name = "review", version.ref = "playReview" }
+glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 play-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore-ktx" }
@@ -67,6 +71,7 @@ firebase-functions = { group = "com.google.firebase", name = "firebase-functions
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth-ktx" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx" }
 firebase-storage = { group = "com.google.firebase", name = "firebase-storage-ktx" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics-ktx" }
 coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 
 # Ktor (multiplatform HTTP client)
@@ -81,6 +86,7 @@ ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settings-no-arg", version.ref = "multiplatformSettings" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

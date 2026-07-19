@@ -11,6 +11,13 @@ app/build
 local.properties
 *.keystore
 *.jks
+*.p12
+*.p8
+google-services.json
+GoogleService-Info.plist
+.env
+.env.*
+**/google_apis_key.xml
 
 # Release outputs — large binaries, not needed in source control
 app/release/
@@ -24,3 +31,7 @@ iosApp/iosApp/Secrets.swift
 iosApp/iosApp.xcodeproj/
 iosApp/*.xcworkspace
 shared/build/XCFrameworks/
+
+# Local tool caches
+.firebase/
+.kotlin/

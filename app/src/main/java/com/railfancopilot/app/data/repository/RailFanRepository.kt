@@ -73,6 +73,52 @@ class RailFanRepository(private val context: Context) {
         }
     }
 
+    // ── Amtrak station departures board ──────────────────────────────────────
+
+    /**
+     * Returns trains currently calling at [stationCode] with their full stop list.
+     * Each entry is (trainSymbol, routeName, stops).
+     */
+    suspend fun getStationDepartures(stationCode: String): List<Triple<String, String, List<TimetableStop>>> {
+        return try {
+            val response = NetworkModule.amtrakApi.getStationTrains(stationCode.uppercase())
+            response.values.flatten().map { train ->
+                Triple(
+                    "Amtrak #${train.trainNum}",
+                    train.routeName,
+                    train.stations.map { it.toTimetableStop() }
+                )
+            }.sortedBy { (_, _, stops) ->
+                // Sort by scheduled departure at this station
+                stops.firstOrNull { it.code.equals(stationCode, ignoreCase = true) }
+                    ?.scheduledDeparture ?: "99:99"
+            }
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Station departures failed for $stationCode: ${e.message}")
+            emptyList()
+        }
+    }
+
+    // ── Amtrak timetable (per-train station stops) ────────────────────────────
+
+    /**
+     * Fetch the full station stop list for a single Amtrak train by its number
+     * (e.g. "20" for the Empire Builder).  Returns an empty list on any failure.
+     *
+     * Times from the API are ISO-8601 strings; we parse them and format as
+     * "h:mm a" in the device's local timezone for display.
+     */
+    suspend fun getTrainTimetable(trainNum: String): List<TimetableStop> {
+        return try {
+            val response = NetworkModule.amtrakApi.getTrain(trainNum)
+            val train = response.values.flatten().firstOrNull() ?: return emptyList()
+            train.stations.map { s -> s.toTimetableStop() }
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Timetable fetch failed for $trainNum: ${e.message}", e)
+            emptyList()
+        }
+    }
+
     // ── SEPTA Regional Rail (free JSON, no key) ──────────────────────────────
 
     /**
@@ -166,6 +212,54 @@ class RailFanRepository(private val context: Context) {
             emptyList()
         }
     }
+
+    // ── VRE (Virginia Railway Express — GTFS-RT, open feed) ──────────────────
+
+    suspend fun getVreTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> =
+        GtfsRtFetcher.fetch(
+            tag         = "VRE",
+            url         = "https://gtfs.vre.org/GTFS-RT/VehiclePositions.pb",
+            railroad    = Railroad.OTHER,
+            agencyLabel = "VRE",
+            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
+            etaFn   = ::computeEtaMinutes
+        )
+
+    // ── MARC (Maryland Area Regional Commuter — GTFS-RT, open feed) ──────────
+
+    suspend fun getMarcTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> =
+        GtfsRtFetcher.fetch(
+            tag         = "MARC",
+            url         = "https://gtfs.mta.maryland.gov/gtfs-rt/VehiclePositions",
+            railroad    = Railroad.OTHER,
+            agencyLabel = "MARC",
+            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
+            etaFn   = ::computeEtaMinutes
+        )
+
+    // ── Metrolink (Southern California — GTFS-RT, open feed) ─────────────────
+
+    suspend fun getMetrolinkTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> =
+        GtfsRtFetcher.fetch(
+            tag         = "Metrolink",
+            url         = "https://metrolinktrains.com/gtfs-rt/vehiclepositions.pb",
+            railroad    = Railroad.OTHER,
+            agencyLabel = "Metrolink",
+            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
+            etaFn   = ::computeEtaMinutes
+        )
+
+    // ── NJ Transit Rail (New Jersey — GTFS-RT, open feed) ────────────────────
+
+    suspend fun getNjTransitTrains(lat: Double, lon: Double, radiusMiles: Double = NEARBY_RADIUS_MILES): List<TrainLocation> =
+        GtfsRtFetcher.fetch(
+            tag         = "NJTransit",
+            url         = "https://www.njtransit.com/rss/VehicleData.xml",
+            railroad    = Railroad.OTHER,
+            agencyLabel = "NJ Transit",
+            userLat = lat, userLon = lon, radiusMiles = radiusMiles,
+            etaFn   = ::computeEtaMinutes
+        )
 
     // ── Sound Transit Sounder (Seattle — GTFS-RT, open feed) ──────────────────
 
@@ -480,6 +574,64 @@ class RailFanRepository(private val context: Context) {
 
     suspend fun deleteLocation(location: SavedLocation) =
         db.savedLocationDao().delete(location)
+
+    // ── Train trail waypoints ─────────────────────────────────────────────────
+
+    suspend fun insertTrailWaypoint(waypoint: TrainTrailWaypoint) =
+        db.trainTrailWaypointDao().insert(waypoint)
+
+    suspend fun getTrailWaypointsSince(trainId: String, sinceMs: Long): List<TrainTrailWaypoint> =
+        db.trainTrailWaypointDao().getTrailSince(trainId, sinceMs)
+
+    suspend fun getLatestTrailWaypoint(trainId: String): TrainTrailWaypoint? =
+        db.trainTrailWaypointDao().getLatestWaypoint(trainId)
+
+    suspend fun lookupLocoNumber(roadNumber: String): Result<String> = try {
+        Result.success(BackendFunctionsClient.lookupLocoNumber(roadNumber))
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) android.util.Log.e("RailFanRepo", "Loco lookup failed: ${e.message}")
+        Result.failure(e)
+    }
+
+    suspend fun pruneTrailWaypointsOlderThan(beforeMs: Long) =
+        db.trainTrailWaypointDao().pruneOlderThan(beforeMs)
+
+    suspend fun getAllTrailWaypointsSince(sinceMs: Long): List<TrainTrailWaypoint> =
+        db.trainTrailWaypointDao().getAllSince(sinceMs)
+
+    // ── Timetable cache ───────────────────────────────────────────────────────
+
+    suspend fun getTimetableCache(trainId: String): TimetableCacheEntry? =
+        db.timetableCacheDao().get(trainId)
+
+    suspend fun saveTimetableCache(entry: TimetableCacheEntry) =
+        db.timetableCacheDao().insert(entry)
+
+    suspend fun pruneTimetableCache(beforeMs: Long) =
+        db.timetableCacheDao().pruneOlderThan(beforeMs)
+
+    // ── Trip logs ─────────────────────────────────────────────────────────────
+
+    fun getTripLogsFlow(): kotlinx.coroutines.flow.Flow<List<TripLog>> =
+        db.tripLogDao().getAllFlow()
+
+    suspend fun insertTrip(trip: TripLog) =
+        db.tripLogDao().insert(trip)
+
+    suspend fun updateTrip(trip: TripLog) =
+        db.tripLogDao().update(trip)
+
+    suspend fun deleteTrip(trip: TripLog) =
+        db.tripLogDao().delete(trip)
+
+    suspend fun getActiveTrip(): TripLog? =
+        db.tripLogDao().getActiveTrip()
+
+    suspend fun totalTripMiles(): Double =
+        db.tripLogDao().totalMiles()
+
+    suspend fun completedTripCount(): Int =
+        db.tripLogDao().completedTripCount()
 
     // ── Encyclopedia ──────────────────────────────────────────────────────────
 
@@ -948,3 +1100,25 @@ class RailFanRepository(private val context: Context) {
         return "$h12:${min.toString().padStart(2, '0')} ${if (isPm) "PM" else "AM"}"
     }
 }
+
+// ── AmtrakStationJson → TimetableStop ────────────────────────────────────────
+
+private val ISO_FMT = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US)
+private val DISPLAY_FMT = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US)
+
+private fun String.parseAmtrakTime(): String? = try {
+    DISPLAY_FMT.format(ISO_FMT.parse(this)!!)
+} catch (_: Exception) { null }
+
+internal fun AmtrakStationJson.toTimetableStop() = TimetableStop(
+    code               = code,
+    scheduledArrival   = schArr?.parseAmtrakTime(),
+    scheduledDeparture = schDep?.parseAmtrakTime(),
+    actualArrival      = arr?.parseAmtrakTime(),
+    actualDeparture    = dep?.parseAmtrakTime(),
+    arrivalStatus      = arrCmnt?.takeIf { it.isNotBlank() },
+    departureStatus    = depCmnt?.takeIf { it.isNotBlank() },
+    isBusThruway       = bus,
+    hasDeparted        = postdep,
+    hasArrived         = postarr
+)
