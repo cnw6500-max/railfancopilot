@@ -52,6 +52,25 @@ struct FirestoreSighting: Identifiable, Codable {
         self.commentCount = commentCount
     }
 
+    init(id: String? = nil, railroad: String, trainSymbol: String, location: String,
+         notes: String, latitude: Double, longitude: Double, reporterName: String,
+         authorId: String? = nil, timestampMs: Double, upvotes: Int,
+         photoUrl: String? = nil, commentCount: Int = 0) {
+        self.id = id
+        self.railroad = railroad
+        self.trainSymbol = trainSymbol
+        self.location = location
+        self.notes = notes
+        self.latitude = latitude
+        self.longitude = longitude
+        self.reporterName = reporterName
+        self.authorId = authorId
+        self.timestampMs = timestampMs
+        self.upvotes = upvotes
+        self.photoUrl = photoUrl
+        self.commentCount = commentCount
+    }
+
     // Custom decoder: tolerates documents written by the Android app, which
     // don't include commentCount and use "reporterUid" instead of "authorId".
     // Swift's auto-synthesized Decodable treats a missing non-optional key
