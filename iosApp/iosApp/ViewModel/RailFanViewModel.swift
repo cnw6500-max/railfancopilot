@@ -660,8 +660,6 @@ struct DecoderHistoryEntry: Codable, Identifiable {
         return fmt.string(from: date)
     }
 }
-    }
-}
 
 // ── Codable wrapper for SavedLocationShared ───────────────────────────────────
 private struct SavedLocationCodable: Codable {

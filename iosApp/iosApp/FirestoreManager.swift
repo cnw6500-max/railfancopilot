@@ -29,8 +29,67 @@ struct FirestoreSighting: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, railroad, trainSymbol, location, notes
-        case latitude, longitude, reporterName, authorId
+        case latitude, longitude, reporterName, authorId, reporterUid
         case timestampMs, upvotes, photoUrl, commentCount
+    }
+
+    init(id: String? = nil, railroad: String, trainSymbol: String, location: String,
+         notes: String, latitude: Double, longitude: Double, reporterName: String,
+         authorId: String? = nil, timestampMs: Double, upvotes: Int,
+         photoUrl: String? = nil, commentCount: Int = 0) {
+        self.id = id
+        self.railroad = railroad
+        self.trainSymbol = trainSymbol
+        self.location = location
+        self.notes = notes
+        self.latitude = latitude
+        self.longitude = longitude
+        self.reporterName = reporterName
+        self.authorId = authorId
+        self.timestampMs = timestampMs
+        self.upvotes = upvotes
+        self.photoUrl = photoUrl
+        self.commentCount = commentCount
+    }
+
+    // Custom decoder: tolerates documents written by the Android app, which
+    // don't include commentCount and use "reporterUid" instead of "authorId".
+    // Swift's auto-synthesized Decodable treats a missing non-optional key
+    // (like commentCount) as a hard failure, silently dropping the whole
+    // document — this decodes every field leniently instead.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id)
+        railroad = try c.decodeIfPresent(String.self, forKey: .railroad) ?? "Unknown"
+        trainSymbol = try c.decodeIfPresent(String.self, forKey: .trainSymbol) ?? ""
+        location = try c.decodeIfPresent(String.self, forKey: .location) ?? "Unknown location"
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        latitude = try c.decodeIfPresent(Double.self, forKey: .latitude) ?? 0
+        longitude = try c.decodeIfPresent(Double.self, forKey: .longitude) ?? 0
+        reporterName = try c.decodeIfPresent(String.self, forKey: .reporterName) ?? "Railfan"
+        authorId = try c.decodeIfPresent(String.self, forKey: .authorId)
+            ?? c.decodeIfPresent(String.self, forKey: .reporterUid)
+        timestampMs = try c.decodeIfPresent(Double.self, forKey: .timestampMs) ?? 0
+        upvotes = try c.decodeIfPresent(Int.self, forKey: .upvotes) ?? 0
+        photoUrl = try c.decodeIfPresent(String.self, forKey: .photoUrl)
+        commentCount = try c.decodeIfPresent(Int.self, forKey: .commentCount) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(id, forKey: .id)
+        try c.encode(railroad, forKey: .railroad)
+        try c.encode(trainSymbol, forKey: .trainSymbol)
+        try c.encode(location, forKey: .location)
+        try c.encode(notes, forKey: .notes)
+        try c.encode(latitude, forKey: .latitude)
+        try c.encode(longitude, forKey: .longitude)
+        try c.encode(reporterName, forKey: .reporterName)
+        try c.encodeIfPresent(authorId, forKey: .authorId)
+        try c.encode(timestampMs, forKey: .timestampMs)
+        try c.encode(upvotes, forKey: .upvotes)
+        try c.encodeIfPresent(photoUrl, forKey: .photoUrl)
+        try c.encode(commentCount, forKey: .commentCount)
     }
 }
 
