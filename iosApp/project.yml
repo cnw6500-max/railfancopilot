@@ -29,13 +29,17 @@ targets:
         product: FirebaseFirestore
       - package: Firebase
         product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseStorage
     info:
       path: iosApp/Info.plist
       properties:
         CFBundleName: Railfan Copilot
         CFBundleDisplayName: Railfan Copilot
-        CFBundleShortVersionString: "2.5.8"
-        CFBundleVersion: "36"
+        CFBundleShortVersionString: "2.7.0"
+        CFBundleVersion: "2"
         LSRequiresIPhoneOS: true
         UIRequiresFullScreen: true
         UIStatusBarStyle: UIStatusBarStyleLightContent
