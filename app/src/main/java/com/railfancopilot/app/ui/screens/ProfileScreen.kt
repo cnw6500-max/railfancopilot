@@ -187,13 +187,13 @@ fun ProfileScreen(vm: RailFanViewModel, uid: String, onBack: () -> Unit, onNavig
                         }
                     }
                     val (feedbackText, feedbackColor) = when (usernameClaimResult) {
-                        is com.railfancopilot.app.data.models.UsernameClaimResult.Success ->
+                        is com.railfancopilot.shared.models.UsernameClaimResult.Success ->
                             "Username claimed!" to RailGreen
-                        is com.railfancopilot.app.data.models.UsernameClaimResult.Taken ->
+                        is com.railfancopilot.shared.models.UsernameClaimResult.Taken ->
                             "That username is already taken" to RailRed
-                        is com.railfancopilot.app.data.models.UsernameClaimResult.InvalidFormat ->
+                        is com.railfancopilot.shared.models.UsernameClaimResult.InvalidFormat ->
                             "3–20 letters, numbers, or underscores" to RailRed
-                        is com.railfancopilot.app.data.models.UsernameClaimResult.Error ->
+                        is com.railfancopilot.shared.models.UsernameClaimResult.Error ->
                             "Couldn't claim username — try again" to RailRed
                         null -> null to TextMuted
                     }

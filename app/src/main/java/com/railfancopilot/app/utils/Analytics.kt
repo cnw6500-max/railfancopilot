@@ -18,7 +18,8 @@ object Analytics {
     // ── Screen views ─────────────────────────────────────────────────────────
     fun screenView(name: String) {
         fa?.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, bundleOf(
-            FirebaseAnalytics.Param.SCREEN_NAME to name
+            FirebaseAnalytics.Param.SCREEN_NAME to name,
+            FirebaseAnalytics.Param.SCREEN_CLASS to name
         ))
     }
 

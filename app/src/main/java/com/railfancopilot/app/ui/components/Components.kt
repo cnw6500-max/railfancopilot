@@ -181,7 +181,9 @@ fun EmptyState(
     icon: ImageVector = Icons.Default.DirectionsRailway,
     title: String,
     subtitle: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -195,6 +197,12 @@ fun EmptyState(
         Text(title, color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Text(subtitle, color = TextMuted, fontSize = 13.sp,
             textAlign = TextAlign.Center, lineHeight = 20.sp)
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = RailBlue)) {
+                Text(actionLabel)
+            }
+        }
     }
 }
 

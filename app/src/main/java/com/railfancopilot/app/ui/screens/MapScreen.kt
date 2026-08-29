@@ -70,7 +70,7 @@ private fun railroadLineColor(operator: String): androidx.compose.ui.graphics.Co
 }
 
 @Composable
-fun MapScreen(vm: RailFanViewModel) {
+fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
     val trains by vm.filteredTrains.collectAsState()
     val trainTrails by vm.trainTrails.collectAsState()
     val features by vm.mapFeatures.collectAsState()
@@ -506,6 +506,24 @@ fun MapScreen(vm: RailFanViewModel) {
                     }
                 }
             }
+
+            // ── Community sightings — prompt a first report when the area is empty ──
+            // Railfan Copilot runs on user-submitted sightings; an empty map with no
+            // call-to-action reads as "broken" rather than "be the first." (loc != null
+            // guards against flashing this before GPS resolves, matching the trains logic above.)
+            if (showSightings && loc != null && communityReports.isEmpty()) {
+                item { SectionHeader("Community sightings nearby (0)") }
+                item {
+                    EmptyState(
+                        icon = Icons.Default.LocationOn,
+                        title = "No sightings reported near you yet",
+                        subtitle = "Railfan Copilot runs on reports from railfans like you. Be the first to log what you see nearby.",
+                        actionLabel = "Report a Sighting",
+                        onAction = onNavigateToCommunity
+                    )
+                }
+            }
+
             item { Spacer(Modifier.height(100.dp)) }
         }
     }

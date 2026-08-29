@@ -19,3 +19,6 @@ actual fun logWarn(tag: String, message: String) {
 
 actual fun createHttpClient(block: HttpClientConfig<*>.() -> Unit): HttpClient =
     HttpClient(Android) { block() }
+
+actual fun dataOf(bytes: ByteArray): dev.gitlive.firebase.storage.Data =
+    dev.gitlive.firebase.storage.Data(bytes)

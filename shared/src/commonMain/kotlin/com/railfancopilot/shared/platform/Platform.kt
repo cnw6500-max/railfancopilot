@@ -12,3 +12,12 @@ expect fun logWarn(tag: String, message: String)
 // Each platform provides its own engine (Android → OkHttp, iOS → Darwin).
 
 expect fun createHttpClient(block: io.ktor.client.HttpClientConfig<*>.() -> Unit): HttpClient
+
+// ── Firebase Storage upload payload ───────────────────────────────────────────
+// dev.gitlive.firebase.storage.Data has no common constructor ("every platform
+// has its own constructor" per the SDK's own doc comment), so wrapping a
+// ByteArray for upload needs a platform bridge. Android side is compile-verified
+// (wraps com.google.firebase.storage.Data 1:1). iOS side (ByteArray -> NSData)
+// could not be compiled or tested on this machine — verify on the Mac before
+// relying on it.
+expect fun dataOf(bytes: ByteArray): dev.gitlive.firebase.storage.Data

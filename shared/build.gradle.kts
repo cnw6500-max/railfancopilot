@@ -35,6 +35,10 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.multiplatform.settings)
+            implementation(libs.gitlive.firebase.common)
+            implementation(libs.gitlive.firebase.firestore)
+            implementation(libs.gitlive.firebase.auth)
+            implementation(libs.gitlive.firebase.storage)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.android)

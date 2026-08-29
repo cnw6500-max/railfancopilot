@@ -44,6 +44,13 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
 
+        <!-- Disable automatic Activity-based screen_view events: this is a single-Activity
+             Compose app, so automatic reporting would tag every screen as "MainActivity"
+             and drown out the manual per-route events fired in RailFanApp(). -->
+        <meta-data
+            android:name="google_analytics_automatic_screen_reporting_enabled"
+            android:value="false" />
+
         <activity
             android:name="com.railfancopilot.app.MainActivity"
             android:exported="true"

@@ -267,7 +267,11 @@ fun RailFanApp() {
                     .padding(innerPadding)
                     .fillMaxSize()
             ) {
-                composable(Screen.Map.route)          { MapScreen(vm) }
+                composable(Screen.Map.route)          {
+                    MapScreen(vm, onNavigateToCommunity = {
+                        navController.navigate(Screen.Community.route) { launchSingleTop = true }
+                    })
+                }
                 composable(Screen.Scanner.route)      { ScannerScreen(vm) }
                 composable(Screen.Decoder.route)      { DecoderScreen(vm, onUpgrade) }
                 composable(Screen.Photo.route)        { PhotoScreen(vm, onUpgrade) }

@@ -182,55 +182,18 @@ data class CommunityReport(
 )
 
 // ── User profiles (crowdsourced identity) ─────────────────────────────────────
+//
+// UserProfile / UsernameClaimResult / FollowEntry / RosterEntry now live in the
+// :shared KMP module (com.railfancopilot.shared.models.CommunityModels.kt) so
+// the same Firestore logic can run on iOS too — see SharedProfileRepo /
+// SharedRosterRepo. These typealiases keep every existing fully-qualified
+// `com.railfancopilot.app.data.models.X` reference in this app compiling
+// unchanged.
 
-/**
- * Mirrors the Firestore `users/{uid}` document. Not a Room entity — read live
- * from the cloud, same pattern as CommunityReport.
- */
-data class UserProfile(
-    val uid: String,
-    val username: String,        // unique handle, lowercase [a-z0-9_]{3,20}, backs follows/roster attribution
-    val displayName: String,     // free-text label shown on reports, may differ in case/spacing from username
-    val joinedMs: Long,
-    val sightingCount: Int = 0,
-    val reporterScore: Int = 0,
-    val followerCount: Int = 0,
-    val followingCount: Int = 0
-)
-
-sealed class UsernameClaimResult {
-    data object Success : UsernameClaimResult()
-    data object Taken : UsernameClaimResult()
-    data object InvalidFormat : UsernameClaimResult()
-    data class Error(val message: String) : UsernameClaimResult()
-}
-
-/** One row of `users/{uid}/following/{targetUid}` — denormalized so lists render with no extra fetches. */
-data class FollowEntry(
-    val uid: String,
-    val username: String,
-    val displayName: String,
-    val followedMs: Long
-)
-
-/**
- * One document in the community-maintained `roster` collection — a specific
- * numbered locomotive (not a model/class; see LocomotiveEntry for that).
- * Doc ID is a normalized "{railroad}_{number}" key, so repeat sightings of
- * the same unit update one shared entry instead of creating duplicates.
- */
-data class RosterEntry(
-    val id: String,
-    val railroad: String,
-    val number: String,
-    val model: String = "",       // optional, e.g. "ES44AC"
-    val notes: String = "",       // paint scheme, special markings, corrections
-    val photoUrl: String? = null,
-    val submittedBy: String = "Railfan",
-    val submittedMs: Long = 0L,
-    val lastSeenMs: Long = 0L,
-    val upvotes: Int = 0
-)
+typealias UserProfile = com.railfancopilot.shared.models.UserProfile
+typealias UsernameClaimResult = com.railfancopilot.shared.models.UsernameClaimResult
+typealias FollowEntry = com.railfancopilot.shared.models.FollowEntry
+typealias RosterEntry = com.railfancopilot.shared.models.RosterEntry
 
 // ── Encyclopedia ─────────────────────────────────────────────────────────────
 
