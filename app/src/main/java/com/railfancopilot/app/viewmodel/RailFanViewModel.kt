@@ -68,6 +68,8 @@ private val PREF_DECODED_RAILROADS        = stringSetPreferencesKey("decoded_rai
 private val PREF_REVIEW_FIRST_DATA_DONE  = booleanPreferencesKey("review_first_data_done")
 /** Set to true once we've fired the trial-end review prompt so it never repeats. */
 private val PREF_REVIEW_TRIAL_END_DONE   = booleanPreferencesKey("review_trial_end_done")
+/** Set to true once we've fired the purchase-completion review prompt so it never repeats. */
+private val PREF_REVIEW_PURCHASE_DONE    = booleanPreferencesKey("review_purchase_done")
 /** Epoch-ms of the last background-exit review prompt; limited to once per 30 days. */
 private val PREF_REVIEW_LAST_EXIT_MS     = longPreferencesKey("review_last_exit_ms")
 private const val REVIEW_EXIT_COOLDOWN_MS = 30L * 24 * 60 * 60 * 1_000L
@@ -670,6 +672,21 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             val already = settingsStore.data.first()[PREF_REVIEW_TRIAL_END_DONE] == true
             if (!already) {
                 settingsStore.edit { it[PREF_REVIEW_TRIAL_END_DONE] = true }
+                _requestInAppReview.value = true
+            }
+        }
+    }
+
+    /**
+     * Call right after a NEW Pro purchase is acknowledged. Fires the review prompt
+     * exactly once, ever — this is the single highest-intent, most positive moment
+     * a user has with the app, so it gets its own dedicated (non-repeating) trigger.
+     */
+    fun maybeRequestReviewOnPurchase() {
+        viewModelScope.launch {
+            val already = settingsStore.data.first()[PREF_REVIEW_PURCHASE_DONE] == true
+            if (!already) {
+                settingsStore.edit { it[PREF_REVIEW_PURCHASE_DONE] = true }
                 _requestInAppReview.value = true
             }
         }
@@ -2392,6 +2409,9 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             repo.pruneTimetableCache(System.currentTimeMillis() - TIMETABLE_CACHE_TTL_MS)
         }
         restoreActiveTrip()
+        // Fires once, ever — covers both a live purchase completing this session
+        // AND an existing Pro subscriber's next launch after this update ships.
+        viewModelScope.launch { proRepository.isPurchased.filter { it }.take(1).collect { maybeRequestReviewOnPurchase() } }
         loadTripStats()
         loadFavoriteFeeds()
         // Load symbol database off the main thread

@@ -79,6 +79,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     // ── In-app review ─────────────────────────────────────────────────────────
     private var reviewPromptedFirstData = UserDefaults.standard.bool(forKey: "reviewFirstDataDone")
     private var reviewPromptedTrialEnd  = UserDefaults.standard.bool(forKey: "reviewTrialEndDone")
+    private var reviewPromptedPurchase  = UserDefaults.standard.bool(forKey: "reviewPurchaseDone")
     private var lastReviewExitMs        = UserDefaults.standard.double(forKey: "reviewLastExitMs")
 
     func maybeRequestReviewFirstData() {
@@ -91,6 +92,15 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard !reviewPromptedTrialEnd, !isPurchased else { return }
         reviewPromptedTrialEnd = true
         UserDefaults.standard.set(true, forKey: "reviewTrialEndDone")
+        requestReview()
+    }
+    /// Fires once, ever — covers both a live purchase completing this session AND
+    /// an existing Pro subscriber's next launch after this update ships (call this
+    /// anywhere isPurchased is confirmed true: unlockPremium() and the entitlement check).
+    func maybeRequestReviewOnPurchase() {
+        guard !reviewPromptedPurchase else { return }
+        reviewPromptedPurchase = true
+        UserDefaults.standard.set(true, forKey: "reviewPurchaseDone")
         requestReview()
     }
     func maybeRequestReviewOnBackground() {
@@ -420,6 +430,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     func unlockPremium() {
         isPurchased = true
         UserDefaults.standard.set(true, forKey: "isPremium")
+        maybeRequestReviewOnPurchase()
     }
 
     // ── Decoder history ───────────────────────────────────────────────────────
