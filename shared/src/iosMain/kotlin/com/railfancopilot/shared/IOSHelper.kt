@@ -69,6 +69,41 @@ class IOSRailFanHelper(
         }
     }
 
+    /**
+     * Fetch trains selectively based on which agency toggles are enabled.
+     * Pass false for any agency to skip fetching it entirely.
+     */
+    fun getSelectedTrains(
+        lat: Double, lon: Double,
+        includeAmtrak: Boolean = true,
+        includeMbta: Boolean = true,
+        includeSepta: Boolean = true,
+        includeMetra: Boolean = true,
+        includeLirr: Boolean = true,
+        includeMetroNorth: Boolean = true,
+        includeCaltrain: Boolean = true,
+        includeSoundTransit: Boolean = true,
+        onSuccess: (List<TrainLocation>) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            try {
+                val all = mutableListOf<TrainLocation>()
+                if (includeAmtrak)      all += repo.getLiveTrains(lat, lon)
+                if (includeMbta)        all += repo.getMbtaTrains(lat, lon)
+                if (includeSepta)       all += repo.getSeptaTrains(lat, lon)
+                if (includeMetra)       all += repo.getMetraTrains(lat, lon)
+                if (includeLirr)        all += repo.getMtaLirrTrains(lat, lon)
+                if (includeMetroNorth)  all += repo.getMtaMetroNorthTrains(lat, lon)
+                if (includeCaltrain)    all += repo.getCaltrainTrains(lat, lon)
+                if (includeSoundTransit) all += repo.getSoundTransitTrains(lat, lon)
+                onSuccess(all)
+            } catch (e: Exception) {
+                onError(e.message ?: "getSelectedTrains failed")
+            }
+        }
+    }
+
     // ── AI features ───────────────────────────────────────────────────────────
 
     fun decodeSymbol(

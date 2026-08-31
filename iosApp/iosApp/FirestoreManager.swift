@@ -14,12 +14,19 @@ struct FirestoreSighting: Identifiable, Codable {
     var timestampMs: Double
     var upvotes: Int
 
+    // Display-only — never written to Firestore
+    var distanceMiles: Double = 0
+
     var minutesAgo: Int {
         let ms = Date().timeIntervalSince1970 * 1000 - timestampMs
         return max(0, Int(ms / 60000))
     }
 
-    var distanceMiles: Double = 0
+    // Exclude distanceMiles from Codable encoding so it is never uploaded to Firestore
+    enum CodingKeys: String, CodingKey {
+        case id, railroad, trainSymbol, location, notes
+        case latitude, longitude, reporterName, timestampMs, upvotes
+    }
 }
 
 // ── Firestore manager ─────────────────────────────────────────────────────────
@@ -37,13 +44,22 @@ class FirestoreManager: ObservableObject {
     private var listener: ListenerRegistration?
 
     // ── Listen for real-time sightings ────────────────────────────────────────
-    func startListening(lat: Double, lon: Double, radiusMiles: Double = 100) {
+    // Fetches the 100 most recent sightings globally. Distance is stamped onto
+    // each sighting for display; radius filtering is done in the UI so the
+    // slider works without restarting the listener.
+    func startListening(lat: Double, lon: Double) {
+        // Don't restart if already listening — just update distances
+        if listener != nil {
+            updateLocation(lat: lat, lon: lon)
+            return
+        }
         isLoading = true
-        listener?.remove()
+        userLat = lat
+        userLon = lon
 
         listener = db.collection(collection)
             .order(by: "timestampMs", descending: true)
-            .limit(to: 50)
+            .limit(to: 100)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
                 isLoading = false
@@ -58,18 +74,39 @@ class FirestoreManager: ObservableObject {
                 var results: [FirestoreSighting] = []
                 for doc in documents {
                     if var sighting = try? doc.data(as: FirestoreSighting.self) {
-                        // Calculate distance
-                        let dLat = sighting.latitude - lat
-                        let dLon = sighting.longitude - lon
-                        let distDeg = sqrt(dLat * dLat + dLon * dLon)
-                        sighting.distanceMiles = distDeg * 69.0
-                        if sighting.distanceMiles <= radiusMiles {
-                            results.append(sighting)
-                        }
+                        sighting.distanceMiles = haversineMiles(
+                            lat1: self.userLat, lon1: self.userLon,
+                            lat2: sighting.latitude, lon2: sighting.longitude)
+                        results.append(sighting)
                     }
                 }
                 self.sightings = results.sorted { $0.timestampMs > $1.timestampMs }
             }
+    }
+
+    // Update distances when user location changes without restarting the listener
+    func updateLocation(lat: Double, lon: Double) {
+        userLat = lat
+        userLon = lon
+        sightings = sightings.map {
+            var s = $0
+            s.distanceMiles = haversineMiles(lat1: lat, lon1: lon,
+                                             lat2: s.latitude, lon2: s.longitude)
+            return s
+        }
+    }
+
+    private var userLat: Double = 41.8781
+    private var userLon: Double = -87.6298
+
+    private func haversineMiles(lat1: Double, lon1: Double,
+                                lat2: Double, lon2: Double) -> Double {
+        let R = 3958.8
+        let dLat = (lat2 - lat1) * .pi / 180
+        let dLon = (lon2 - lon1) * .pi / 180
+        let a = sin(dLat/2)*sin(dLat/2) +
+                cos(lat1 * .pi/180)*cos(lat2 * .pi/180)*sin(dLon/2)*sin(dLon/2)
+        return R * 2 * atan2(sqrt(a), sqrt(1-a))
     }
 
     func stopListening() {

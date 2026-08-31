@@ -4,6 +4,7 @@ import shared
 struct DecoderView: View {
     @ObservedObject var vm: RailFanViewModel
     @State private var symbolInput = ""
+    @State private var showHistory = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -14,11 +15,12 @@ struct DecoderView: View {
                 ScrollView {
                     VStack(spacing: 20) {
 
-                        // Input card
+                        // ── Input card ────────────────────────────────────────
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Enter Train Symbol")
-                                .font(.system(size: 13))
-                                .foregroundColor(.textMuted)
+                                .font(.system(size: 13)).foregroundColor(.textMuted)
+                            Text("Format: PRIORITY-ORIGIN+DESTINATION-TRAIN#")
+                                .font(.system(size: 11)).foregroundColor(.textMuted)
 
                             HStack(spacing: 10) {
                                 TextField("e.g. QCHILA, TOMNK-01", text: $symbolInput)
@@ -28,17 +30,15 @@ struct DecoderView: View {
                                     .autocorrectionDisabled()
                                     .focused($inputFocused)
                                     .onSubmit { decodeIfNeeded() }
+                                    .onChange(of: symbolInput) { new in symbolInput = new.uppercased() }
 
                                 if !symbolInput.isEmpty {
                                     Button { symbolInput = "" } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(.textMuted)
+                                        Image(systemName: "xmark.circle.fill").foregroundColor(.textMuted)
                                     }
                                 }
                             }
-                            .padding(12)
-                            .background(Color.bgInput)
-                            .cornerRadius(10)
+                            .padding(12).background(Color.bgInput).cornerRadius(10)
                             .overlay(RoundedRectangle(cornerRadius: 10)
                                 .stroke(Color.borderLight, lineWidth: 0.5))
 
@@ -53,49 +53,46 @@ struct DecoderView: View {
                                         .font(.system(size: 15, weight: .semibold))
                                 }
                                 .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
                                 .background(symbolInput.isEmpty ? Color.railBlueDark : Color.railBlueMid)
                                 .cornerRadius(12)
                             }
                             .disabled(symbolInput.isEmpty || vm.isDecoding)
                         }
-                        .padding(16)
-                        .cardStyle()
-                        .padding(.horizontal)
+                        .padding(16).cardStyle().padding(.horizontal)
 
-                        // Error
+                        // ── Error ─────────────────────────────────────────────
                         if let err = vm.decoderError {
                             HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.orange)
-                                Text(err)
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.textSecondary)
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                                Text(err).font(.system(size: 13)).foregroundColor(.textSecondary)
                             }
-                            .padding(12)
-                            .cardStyle()
+                            .padding(12).cardStyle().padding(.horizontal)
+                        }
+
+                        // ── Result ────────────────────────────────────────────
+                        if let result = vm.decoderResult {
+                            DecoderResultCard(result: result).padding(.horizontal)
+                        }
+
+                        // ── Decode history ────────────────────────────────────
+                        if !vm.decodeHistory.isEmpty && vm.decoderResult == nil && !vm.isDecoding {
+                            DecodeHistoryCard(history: vm.decodeHistory) { entry in
+                                symbolInput = entry.symbol
+                                decodeIfNeeded()
+                            }
                             .padding(.horizontal)
                         }
 
-                        // Result
-                        if let result = vm.decoderResult {
-                            DecoderResultCard(result: result)
-                                .padding(.horizontal)
-                        }
-
-                        // Hint
-                        if vm.decoderResult == nil && !vm.isDecoding {
+                        // ── Empty hint ────────────────────────────────────────
+                        if vm.decoderResult == nil && !vm.isDecoding && vm.decodeHistory.isEmpty {
                             VStack(spacing: 8) {
                                 Image(systemName: "cpu")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.railBlueDark)
+                                    .font(.system(size: 40)).foregroundColor(.railBlueDark)
                                 Text("AI Symbol Decoder")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.textPrimary)
+                                    .font(.system(size: 16, weight: .medium)).foregroundColor(.textPrimary)
                                 Text("Enter a freight or passenger train symbol to decode its origin, destination, type, and typical consist.")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.textMuted)
+                                    .font(.system(size: 13)).foregroundColor(.textMuted)
                                     .multilineTextAlignment(.center)
                             }
                             .padding(24)
@@ -108,7 +105,27 @@ struct DecoderView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.bgPrimary, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !vm.decodeHistory.isEmpty {
+                        Button { showHistory = true } label: {
+                            Image(systemName: "clock.arrow.circlepath").foregroundColor(.railBlue)
+                        }
+                    }
+                }
+            }
             .onTapGesture { inputFocused = false }
+        }
+        .sheet(isPresented: $showHistory) {
+            DecodeHistorySheet(history: vm.decodeHistory) { entry in
+                showHistory = false
+                symbolInput = entry.symbol
+                // Wait for sheet dismiss animation then decode; Task is cancellable
+                Task {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    decodeIfNeeded()
+                }
+            }
         }
     }
 
@@ -120,12 +137,93 @@ struct DecoderView: View {
     }
 }
 
+// ── Decode history card (inline) ──────────────────────────────────────────────
+struct DecodeHistoryCard: View {
+    let history: [DecodeHistoryRecord]
+    let onTap: (DecodeHistoryRecord) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath").foregroundColor(.railBlue)
+                Text("Recent Decodes").font(.system(size: 15, weight: .semibold)).foregroundColor(.textPrimary)
+            }
+            ForEach(history.prefix(5)) { entry in
+                Button { onTap(entry) } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.symbol)
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.textPrimary)
+                            Text("\(entry.origin) → \(entry.destination)")
+                                .font(.system(size: 11)).foregroundColor(.textMuted)
+                        }
+                        Spacer()
+                        Text(entry.railroadName)
+                            .font(.system(size: 11)).foregroundColor(.textMuted)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .padding(16).background(Color.bgCard).cornerRadius(14)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+    }
+}
+
+// ── Decode history full sheet ─────────────────────────────────────────────────
+struct DecodeHistorySheet: View {
+    let history: [DecodeHistoryRecord]
+    let onSelect: (DecodeHistoryRecord) -> Void
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.bgPrimary.ignoresSafeArea()
+                List(history) { entry in
+                    Button { onSelect(entry) } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(entry.symbol)
+                                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.textPrimary)
+                                Spacer()
+                                Text(entry.timestamp, style: .relative)
+                                    .font(.system(size: 11)).foregroundColor(.textMuted)
+                            }
+                            Text(entry.railroadName + " · " + entry.type)
+                                .font(.system(size: 12)).foregroundColor(.textMuted)
+                            Text("\(entry.origin) → \(entry.destination)")
+                                .font(.system(size: 12)).foregroundColor(.textSecondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .listRowBackground(Color.bgCard)
+                    .listRowSeparatorTint(Color.border)
+                }
+                .listStyle(.plain).scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Decode History")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.bgPrimary, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.foregroundColor(.railBlue)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+// ── Result card ───────────────────────────────────────────────────────────────
 struct DecoderResultCard: View {
     let result: TrainSymbolDecodeResult
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Header
             HStack {
                 Text(result.symbol)
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
@@ -133,13 +231,10 @@ struct DecoderResultCard: View {
                 Spacer()
                 PriorityBadge(priority: result.priority)
             }
-            Text(result.type)
-                .font(.system(size: 14))
-                .foregroundColor(.textMuted)
+            Text(result.type).font(.system(size: 14)).foregroundColor(.textMuted)
 
             Divider().background(Color.border)
 
-            // Route
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Origin").font(.system(size: 11)).foregroundColor(.textMuted)
@@ -155,32 +250,24 @@ struct DecoderResultCard: View {
             }
 
             Divider().background(Color.border)
-
-            // Details
-            DetailRow(label: "Railroad",  value: result.railroad.displayName)
-            DetailRow(label: "Schedule",  value: result.schedule)
+            DetailRow(label: "Railroad", value: result.railroad.displayName)
+            DetailRow(label: "Schedule", value: result.schedule)
 
             if !result.typicalConsist.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Typical Consist").font(.system(size: 12)).foregroundColor(.textMuted)
                     Text(result.typicalConsist.joined(separator: " · "))
-                        .font(.system(size: 13))
-                        .foregroundColor(.textSecondary)
+                        .font(.system(size: 13)).foregroundColor(.textSecondary)
                 }
             }
-
             if !result.notes.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Notes").font(.system(size: 12)).foregroundColor(.textMuted)
-                    Text(result.notes)
-                        .font(.system(size: 13))
-                        .foregroundColor(.textSecondary)
-                        .lineSpacing(4)
+                    Text(result.notes).font(.system(size: 13)).foregroundColor(.textSecondary).lineSpacing(4)
                 }
             }
         }
-        .padding(16)
-        .cardStyle()
+        .padding(16).cardStyle()
     }
 }
 
@@ -197,9 +284,7 @@ struct PriorityBadge: View {
         Text(priority)
             .font(.system(size: 11, weight: .semibold))
             .foregroundColor(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.15))
-            .cornerRadius(6)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.15)).cornerRadius(6)
     }
 }

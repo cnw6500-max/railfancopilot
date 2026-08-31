@@ -24,3 +24,4 @@ iosApp/iosApp/Secrets.swift
 iosApp/iosApp.xcodeproj/
 iosApp/*.xcworkspace
 shared/build/XCFrameworks/
+iosApp/shared.xcframework/

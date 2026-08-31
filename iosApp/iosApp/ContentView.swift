@@ -21,6 +21,12 @@ struct ContentView: View {
                     .tabItem { Label("Roster",    systemImage: "book.fill") }
                 SavedLocationsView(vm: vm)
                     .tabItem { Label("Saved",     systemImage: "bookmark.fill") }
+                WebcamsView()
+                    .tabItem { Label("Webcams",   systemImage: "video.fill") }
+                SpotsView(vm: vm)
+                    .tabItem { Label("Spots",     systemImage: "camera.aperture") }
+                TripLogView(vm: vm)
+                    .tabItem { Label("Trip Log",  systemImage: "book.closed.fill") }
                 SettingsView(vm: vm)
                     .tabItem { Label("Settings",  systemImage: "gear") }
             }

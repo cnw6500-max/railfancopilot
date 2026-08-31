@@ -8,6 +8,8 @@ struct SavedLocationsView: View {
     @ObservedObject var vm: RailFanViewModel
     @State private var showAddSheet = false
     @State private var selectedLocation: SavedLocationShared? = nil
+    @State private var showSpots = false
+    @State private var showTripLog = false
 
     var body: some View {
         NavigationView {
@@ -64,14 +66,25 @@ struct SavedLocationsView: View {
             .toolbarBackground(Color.bgPrimary, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    HStack(spacing: 14) {
+                        Button { showSpots = true } label: {
+                            Image(systemName: "camera.aperture").foregroundColor(.railBlue)
+                        }
+                        Button { showTripLog = true } label: {
+                            Image(systemName: "book.fill").foregroundColor(.railBlue)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showAddSheet = true } label: {
-                        Image(systemName: "plus")
-                            .foregroundColor(.railBlue)
+                        Image(systemName: "plus").foregroundColor(.railBlue)
                     }
                 }
             }
         }
+        .sheet(isPresented: $showSpots) { SpotsView(vm: vm) }
+        .sheet(isPresented: $showTripLog) { TripLogView(vm: vm) }
         .sheet(isPresented: $showAddSheet) {
             AddLocationSheet(vm: vm)
         }

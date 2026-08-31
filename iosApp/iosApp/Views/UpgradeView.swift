@@ -3,7 +3,7 @@ import StoreKit
 
 struct UpgradeView: View {
     @ObservedObject var vm: RailFanViewModel
-    @StateObject private var store = StoreManager.shared
+    @ObservedObject private var store = StoreManager.shared
     @Environment(\.dismiss) var dismiss
 
     private let freeFeatures: [(icon: String, title: String)] = [
@@ -210,9 +210,11 @@ struct UpgradeView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await store.loadProducts()
-            // Check if already purchased
-            if await store.checkEntitlement() {
-                vm.unlockPremium()
+            if await store.checkEntitlement() { vm.unlockPremium() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .storeTransactionUpdated)) { _ in
+            Task {
+                if await store.checkEntitlement() { vm.unlockPremium() }
             }
         }
     }
