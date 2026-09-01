@@ -847,7 +847,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // ── Timetable ─────────────────────────────────────────────────────────────
     func loadTimetable(for train: TrainLocation) {
-        guard train.railroad == .AMTRAK else {
+        guard train.railroad == .amtrak else {
             timetableError = "Timetables are currently available for Amtrak only"
             timetableStops = []
             return
