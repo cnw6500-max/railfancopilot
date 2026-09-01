@@ -1,10 +1,17 @@
 import SwiftUI
 import PhotosUI
+import Speech
+import AVFoundation
+
+// ── Holds AVAudioEngine as a reference type so it survives SwiftUI re-renders ──
+final class AudioEngineHolder: ObservableObject {
+    let engine = AVAudioEngine()
+}
 
 struct CommunityView: View {
     @ObservedObject var vm: RailFanViewModel
     @StateObject private var firestore = FirestoreManager.shared
-    @State private var distanceFilter: Double = 100
+    @State private var distanceFilter: Double = 0   // initialised from vm.reportRadiusMiles in onAppear
     @State private var showAddSighting = false
 
     var filteredSightings: [FirestoreSighting] {
@@ -110,6 +117,7 @@ struct CommunityView: View {
                 }
             }
             .onAppear {
+                if distanceFilter == 0 { distanceFilter = Double(vm.reportRadiusMiles) }
                 let lat = vm.userLocation?.latitude ?? 0.0
                 let lon = vm.userLocation?.longitude ?? 0.0
                 // Always fetch at max radius; slider does client-side filtering only
@@ -476,8 +484,17 @@ struct AddSightingView: View {
     // Photo
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
     @State private var selectedImage: UIImage? = nil
+    @State private var isListening = false
+    @State private var showPhotoAttach = false
+    @State private var attachedPhoto: TaggedPhotoRecord? = nil
 
     private let railroads = ["BNSF", "UP", "CSX", "NS", "CN", "CP", "Amtrak", "Metra", "MBTA", "LIRR", "Metro-North", "SEPTA", "Caltrain", "Sound Transit", "Other"]
+
+    // Speech recognition — audioEngine must survive re-renders so it's in a StateObject
+    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    @State private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    @State private var recognitionTask: SFSpeechRecognitionTask?
+    @StateObject private var audioHolder = AudioEngineHolder()
 
     var body: some View {
         NavigationView {
@@ -542,7 +559,23 @@ struct AddSightingView: View {
 
                         // Notes
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Notes").font(.system(size: 13)).foregroundColor(.textMuted)
+                            HStack {
+                                Text("Notes").font(.system(size: 13)).foregroundColor(.textMuted)
+                                Spacer()
+                                Button { toggleListening() } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: isListening ? "stop.circle.fill" : "mic.fill")
+                                            .foregroundColor(isListening ? .red : .railBlue)
+                                            .font(.system(size: 14))
+                                        Text(isListening ? "Stop" : "Voice")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(isListening ? .red : .railBlue)
+                                    }
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background((isListening ? Color.red : Color.railBlue).opacity(0.15))
+                                    .cornerRadius(8)
+                                }
+                            }
                             TextEditor(text: $notes)
                                 .foregroundColor(.textPrimary)
                                 .frame(height: 100)
@@ -582,6 +615,40 @@ struct AddSightingView: View {
                             }
                         }
 
+                        // Attach a previously-tagged photo (from Decoder / Photo history) instead
+                        if !vm.taggedPhotos.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Attach Tagged Photo").font(.system(size: 13)).foregroundColor(.textMuted)
+                                if let photo = attachedPhoto {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "photo.fill")
+                                            .foregroundColor(.railBlue).font(.system(size: 16))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(photo.symbol.isEmpty ? photo.railroad : photo.symbol)
+                                                .font(.system(size: 13, weight: .medium)).foregroundColor(.textPrimary)
+                                            Text(photo.locationName)
+                                                .font(.system(size: 11)).foregroundColor(.textMuted)
+                                        }
+                                        Spacer()
+                                        Button { attachedPhoto = nil } label: {
+                                            Image(systemName: "xmark.circle.fill").foregroundColor(.textMuted)
+                                        }
+                                    }
+                                    .padding(12).background(Color.bgCard).cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.railBlue.opacity(0.4), lineWidth: 1))
+                                } else {
+                                    Button { showPhotoAttach = true } label: {
+                                        Label("Choose from gallery", systemImage: "photo.badge.plus")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.railBlue)
+                                            .padding(10).frame(maxWidth: .infinity)
+                                            .background(Color.bgCard).cornerRadius(10)
+                                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.border, lineWidth: 0.5))
+                                    }
+                                }
+                            }
+                        }
+
                         if let err = errorMessage {
                             Text(err).font(.system(size: 13)).foregroundColor(.orange)
                         }
@@ -617,12 +684,61 @@ struct AddSightingView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { isPresented = false }
+                    Button("Cancel") { stopListening(); isPresented = false }
                         .foregroundColor(.railBlue)
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showPhotoAttach) {
+            PhotoPickerSheet(photos: vm.taggedPhotos, onSelect: { attachedPhoto = $0 })
+        }
+    }
+
+    // ── Voice transcription ───────────────────────────────────────────────
+    private func toggleListening() {
+        if isListening { stopListening() } else { startListening() }
+    }
+
+    private func startListening() {
+        SFSpeechRecognizer.requestAuthorization { status in
+            guard status == .authorized else { return }
+            Task { @MainActor in
+                do {
+                    try AVAudioSession.sharedInstance().setCategory(.record, mode: .measurement, options: .duckOthers)
+                    try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+                    recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+                    guard let req = recognitionRequest else { return }
+                    req.shouldReportPartialResults = true
+                    let node = audioHolder.engine.inputNode
+                    recognitionTask = speechRecognizer?.recognitionTask(with: req) { result, error in
+                        if let r = result {
+                            notes = r.bestTranscription.formattedString
+                            if r.isFinal { stopListening() }
+                        }
+                        if error != nil { stopListening() }
+                    }
+                    let format = node.outputFormat(forBus: 0)
+                    node.installTap(onBus: 0, bufferSize: 1024, format: format) { buf, _ in
+                        req.append(buf)
+                    }
+                    audioHolder.engine.prepare()
+                    try audioHolder.engine.start()
+                    isListening = true
+                } catch { isListening = false }
+            }
+        }
+    }
+
+    private func stopListening() {
+        audioHolder.engine.stop()
+        audioHolder.engine.inputNode.removeTap(onBus: 0)
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        try? AVAudioSession.sharedInstance().setActive(false)
+        isListening = false
     }
 
     private func submit() {
@@ -633,6 +749,10 @@ struct AddSightingView: View {
         let name = effectiveReporterName
         // Use photoData state var (loaded via PhotosPicker); selectedImage is unused.
         let submitPhoto = photoData
+        var finalNotes = notes
+        if let photo = attachedPhoto {
+            finalNotes += "\n[Photo: \(photo.symbol) at \(photo.locationName)]"
+        }
 
         Task {
             do {
@@ -640,17 +760,66 @@ struct AddSightingView: View {
                     railroad: railroad,
                     trainSymbol: trainSymbol.isEmpty ? "Unknown" : trainSymbol,
                     location: location.isEmpty ? "Unknown location" : location,
-                    notes: notes,
+                    notes: finalNotes,
                     lat: lat,
                     lon: lon,
                     reporterName: name,
                     photoData: submitPhoto
                 )
+                stopListening()
                 isPresented = false
             } catch {
                 errorMessage = "Failed to submit: \(error.localizedDescription)"
                 isSubmitting = false
             }
         }
+    }
+}
+
+// ── Photo picker sheet for attaching a tagged photo ───────────────────────
+struct PhotoPickerSheet: View {
+    let photos: [TaggedPhotoRecord]
+    let onSelect: (TaggedPhotoRecord) -> Void
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.bgPrimary.ignoresSafeArea()
+                List(photos) { photo in
+                    Button {
+                        onSelect(photo)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "photo.fill").foregroundColor(.railBlue).font(.system(size: 20))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(photo.symbol.isEmpty ? photo.railroad : "\(photo.railroad) · \(photo.symbol)")
+                                    .font(.system(size: 14, weight: .medium)).foregroundColor(.textPrimary)
+                                Text(photo.locationName)
+                                    .font(.system(size: 12)).foregroundColor(.textMuted)
+                                Text(photo.timestamp, style: .relative)
+                                    .font(.system(size: 11)).foregroundColor(.textMuted)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .listRowBackground(Color.bgCard)
+                    .listRowSeparatorTint(Color.border)
+                }
+                .listStyle(.plain).scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Choose Photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.bgPrimary, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") { dismiss() }.foregroundColor(.railBlue)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }

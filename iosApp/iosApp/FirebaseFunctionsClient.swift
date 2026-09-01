@@ -56,4 +56,16 @@ class FirebaseFunctionsClient {
         }
         return text
     }
+
+    func getStationDepartures(stationCode: String) async throws -> String {
+        let data: [String: Any] = ["stationCode": stationCode]
+        let result = try await functions.httpsCallable("getStationDepartures").call(data)
+        if let map = result.data as? [String: Any], let json = map["departures"] as? String {
+            return json
+        }
+        // Fallback: encode whatever came back as JSON
+        if let json = try? JSONSerialization.data(withJSONObject: result.data as Any),
+           let str = String(data: json, encoding: .utf8) { return str }
+        return "[]"
+    }
 }

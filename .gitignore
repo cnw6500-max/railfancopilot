@@ -35,3 +35,10 @@ shared/build/XCFrameworks/
 # Local tool caches
 .firebase/
 .kotlin/
+
+# iOS build artifacts
+iosApp/shared.xcframework/
+
+# Xcode user-specific workspace state
+*.xcuserstate
+xcuserdata/

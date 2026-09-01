@@ -60,6 +60,9 @@ targets:
         NSCameraUsageDescription: "Railfan Copilot uses the camera to take photos for the AI locomotive identifier."
         NSPhotoLibraryUsageDescription: "Railfan Copilot accesses your photo library to select images for the AI locomotive identifier."
         NSPhotoLibraryAddUsageDescription: "Railfan Copilot saves locomotive photos to your library."
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: "Railfan Copilot uses the microphone for voice-to-text when reporting train sightings."
+        NSSpeechRecognitionUsageDescription: "Railfan Copilot uses speech recognition to transcribe voice sighting reports."
         NSAppTransportSecurity:
           NSExceptionDomains:
             dieselshop.us:
@@ -84,3 +87,48 @@ targets:
       CODE_SIGN_STYLE: Automatic
       DEVELOPMENT_TEAM: "7K7CYUNXTT"
       CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
+
+  iosAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: iosAppUITests
+    dependencies:
+      - target: iosApp
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.ronminor.railfancopilotUITests
+      SWIFT_VERSION: "5.9"
+      GENERATE_INFOPLIST_FILE: YES
+      CODE_SIGN_STYLE: Automatic
+      DEVELOPMENT_TEAM: "7K7CYUNXTT"
+
+schemes:
+  iosApp:
+    build:
+      targets:
+        iosApp: all
+        iosAppUITests: [test]
+    test:
+      targets:
+        - name: iosAppUITests
+          parallelizable: false
+          randomExecutionOrder: false
+    archive:
+      config: Release
+      postActions:
+        - name: Generate dSYMs for SPM frameworks
+          script: |
+            #!/bin/bash
+            set -e
+            FRAMEWORKS_DIR="${ARCHIVE_PATH}/Products/Applications/${WRAPPER_NAME}/Frameworks"
+            DSYMS_DIR="${ARCHIVE_PATH}/dSYMs"
+            if [ ! -d "$FRAMEWORKS_DIR" ]; then exit 0; fi
+            for FW in "$FRAMEWORKS_DIR"/*.framework; do
+              FW_NAME=$(basename "$FW")
+              DSYM_PATH="${DSYMS_DIR}/${FW_NAME}.dSYM"
+              BINARY="${FW}/${FW_NAME%.framework}"
+              if [ -d "$DSYM_PATH" ] || [ ! -f "$BINARY" ]; then continue; fi
+              dsymutil "$BINARY" -o "$DSYM_PATH" 2>/dev/null || true
+              echo "Generated: ${FW_NAME}.dSYM"
+            done
+          settingsTarget: iosApp

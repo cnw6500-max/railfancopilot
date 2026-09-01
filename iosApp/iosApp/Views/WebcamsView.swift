@@ -1,111 +1,130 @@
 import SwiftUI
+import WebKit
 
-// ── Data Model ────────────────────────────────────────────────────────────────
-struct RailcamEntry: Identifiable {
-    let id: String
+struct RailWebcam: Identifiable {
+    let id = UUID()
     let name: String
     let location: String
     let railroad: String
-    let subdivision: String
     let description: String
     let url: String
+    let category: WebcamCategory
 }
 
-let ALL_RAILCAMS: [RailcamEntry] = [
-    RailcamEntry(id: "rochelle_il", name: "Rochelle Railroad Park", location: "Rochelle, IL",
-                 railroad: "BNSF / UP", subdivision: "BNSF Chillicothe Sub / UP Overland",
-                 description: "Live crossing of BNSF and UP mainlines — one of the busiest rail intersections in the US.",
-                 url: "https://www.youtube.com/results?search_query=rochelle+railroad+park+live+cam"),
-    RailcamEntry(id: "cajon_pass", name: "Cajon Pass", location: "Cajon, CA",
-                 railroad: "BNSF / UP", subdivision: "BNSF Transcon / UP LA Sub",
-                 description: "Fan-operated cameras at the summit of Cajon Pass watching heavy freights climb the grade.",
-                 url: "https://www.youtube.com/results?search_query=cajon+pass+live+train+cam"),
-    RailcamEntry(id: "tehachapi_loop", name: "Tehachapi Loop", location: "Tehachapi, CA",
-                 railroad: "BNSF / UP", subdivision: "BNSF Mojave Sub",
-                 description: "Classic spiral loop where trains visually pass over themselves. Stunning mountain scenery.",
-                 url: "https://www.youtube.com/results?search_query=tehachapi+loop+live+train+cam"),
-    RailcamEntry(id: "donner_pass", name: "Donner Pass", location: "Donner Summit, CA",
-                 railroad: "UP", subdivision: "UP Overland Route",
-                 description: "UP's dramatic crossing of the Sierra Nevada — snow sheds, helpers, and spectacular mountain scenery year-round.",
-                 url: "https://www.youtube.com/results?search_query=donner+pass+union+pacific+live+train+cam"),
-    RailcamEntry(id: "horseshoe_curve", name: "Horseshoe Curve", location: "Altoona, PA",
-                 railroad: "NS", subdivision: "NS Pittsburgh Line",
-                 description: "Historic NS horseshoe curve cutting through the Allegheny Mountains. NPS visitor center on-site.",
-                 url: "https://www.youtube.com/results?search_query=horseshoe+curve+altoona+live+train"),
-    RailcamEntry(id: "fostoria_oh", name: "Fostoria Iron Triangle", location: "Fostoria, OH",
-                 railroad: "CSX / NS", subdivision: "Multiple mainlines",
-                 description: "Three mainlines converge at Fostoria — watch CSX and NS freights roll through the triangle.",
-                 url: "https://www.youtube.com/results?search_query=fostoria+ohio+iron+triangle+live+cam"),
-    RailcamEntry(id: "up_north_platte", name: "UP Bailey Yard — Golden Spike Tower", location: "North Platte, NE",
-                 railroad: "UP", subdivision: "UP Overland Route",
-                 description: "World's largest rail yard. Golden Spike Tower offers live webcam views of over 10,000 cars per day.",
-                 url: "https://www.goldenspike.org/webcam/"),
-    RailcamEntry(id: "raton_pass", name: "Raton Pass", location: "Raton, NM",
-                 railroad: "BNSF", subdivision: "BNSF Raton Sub",
-                 description: "Steep 3.5% grade crossing the Sangre de Cristo Mountains — helpers required on almost every train.",
-                 url: "https://www.youtube.com/results?search_query=raton+pass+bnsf+live+train+cam"),
-    RailcamEntry(id: "marias_pass", name: "Marias Pass", location: "Essex, MT",
-                 railroad: "BNSF", subdivision: "BNSF Havre Sub",
-                 description: "Lowest pass through the Rockies — BNSF's northern Transcon through glacier country.",
-                 url: "https://www.youtube.com/results?search_query=marias+pass+bnsf+montana+trains"),
-    RailcamEntry(id: "bnsf_galesburg", name: "BNSF Galesburg", location: "Galesburg, IL",
-                 railroad: "BNSF", subdivision: "BNSF Chillicothe Sub",
-                 description: "Major BNSF yard and mainline. Heavy intermodal, coal, and manifest traffic throughout the day.",
-                 url: "https://www.youtube.com/results?search_query=bnsf+galesburg+illinois+trains+live"),
-    RailcamEntry(id: "kansas_city", name: "Kansas City", location: "Kansas City, MO",
-                 railroad: "BNSF / UP / NS / CSX", subdivision: "Multiple mainlines",
-                 description: "One of the largest rail hubs in North America — nearly every Class I railroad passes through.",
-                 url: "https://www.youtube.com/results?search_query=kansas+city+railroad+live+train+cam"),
-    RailcamEntry(id: "ogden_ut", name: "Ogden", location: "Ogden, UT",
-                 railroad: "UP", subdivision: "UP Overland Route",
-                 description: "Historic transcontinental junction where the Golden Spike was driven in 1869 — heavy UP mainline traffic.",
-                 url: "https://www.youtube.com/results?search_query=ogden+utah+union+pacific+trains+live"),
-    RailcamEntry(id: "csx_cincinnati", name: "CSX Cincinnati", location: "Cincinnati, OH",
-                 railroad: "CSX", subdivision: "CSX Cincinnati Hub",
-                 description: "CSX gateway hub — intermodal, automotive, and mixed-freight trains through the Queen City.",
-                 url: "https://www.youtube.com/results?search_query=csx+cincinnati+live+train+cam"),
-    RailcamEntry(id: "selkirk_yard", name: "Selkirk Yard", location: "Selkirk, NY",
-                 railroad: "CSX", subdivision: "CSX Boston Line",
-                 description: "Largest rail yard in the northeast — CSX's main classification hub for New England traffic.",
-                 url: "https://www.youtube.com/results?search_query=selkirk+yard+csx+new+york+trains"),
-    RailcamEntry(id: "colton_crossing", name: "Colton Crossing", location: "Colton, CA",
-                 railroad: "BNSF / UP", subdivision: "BNSF Transcon / UP Sunset Route",
-                 description: "One of the busiest at-grade rail diamonds in the US — BNSF Transcon crosses UP's Sunset Route with trains every few minutes.",
-                 url: "https://www.youtube.com/results?search_query=colton+crossing+bnsf+up+live+train+cam"),
-    RailcamEntry(id: "horseshoe_curve", name: "Horseshoe Curve", location: "Altoona, PA",
-                 railroad: "NS", subdivision: "NS Pittsburgh Line",
-                 description: "Historic NS horseshoe curve cutting through the Allegheny Mountains.",
-                 url: "https://www.youtube.com/results?search_query=horseshoe+curve+altoona+live+train"),
-    RailcamEntry(id: "up_cheyenne", name: "UP Cheyenne", location: "Cheyenne, WY",
-                 railroad: "UP", subdivision: "UP Overland Route",
-                 description: "Union Pacific's historic Cheyenne terminal — gateway to Sherman Hill and the Rocky Mountain climb.",
-                 url: "https://www.youtube.com/results?search_query=union+pacific+cheyenne+wyoming+live+trains"),
-    RailcamEntry(id: "strasburg_rr", name: "Strasburg Railroad", location: "Strasburg, PA",
-                 railroad: "Strasburg RR", subdivision: "Strasburg Branch",
-                 description: "America's oldest operating short line — live steam locomotives hauling passenger trains through Pennsylvania Dutch Country.",
-                 url: "https://www.strasburgrailroad.com"),
-    RailcamEntry(id: "kingman_az", name: "Kingman", location: "Kingman, AZ",
-                 railroad: "BNSF", subdivision: "BNSF Transcon / Seligman Sub",
-                 description: "High-desert BNSF Transcon — constant intermodal and manifest traffic through the Mojave.",
-                 url: "https://www.youtube.com/results?search_query=kingman+arizona+bnsf+live+train+cam"),
-    RailcamEntry(id: "cn_memphis", name: "CN Memphis Bridge", location: "Memphis, TN",
-                 railroad: "CN", subdivision: "CN Memphis Sub",
-                 description: "CN's crossing over the Mississippi River — a constant parade of manifest and intermodal trains.",
-                 url: "https://www.youtube.com/results?search_query=cn+railroad+memphis+bridge+trains"),
+enum WebcamCategory: String, CaseIterable {
+    case crossing  = "Crossings"
+    case yard      = "Yards"
+    case mountain  = "Mountain Grades"
+    case station   = "Stations"
+    case all       = "All"
+}
+
+// Confirmed permanent VirtualRailfan YouTube stream IDs (mirrors Android)
+let curated: [RailWebcam] = [
+    // ── Crossings ─────────────────────────────────────────────────────────────
+    RailWebcam(name: "Rochelle Railroad Park",
+               location: "Rochelle, IL",
+               railroad: "BNSF / UP",
+               description: "World-famous diamond crossing of BNSF and UP mainlines. 100+ trains/day.",
+               url: "https://www.youtube.com/watch?v=LhNpn9L5ndM",
+               category: .crossing),
+    RailWebcam(name: "Fostoria Iron Triangle",
+               location: "Fostoria, OH",
+               railroad: "CSX / NS / CR",
+               description: "Three-railroad triangle with a dedicated railfan park and webcam.",
+               url: "https://www.youtube.com/watch?v=23tmCNeFh7A",
+               category: .crossing),
+    RailWebcam(name: "Streator Diamond",
+               location: "Streator, IL",
+               railroad: "BNSF / CN",
+               description: "Active diamond crossing of BNSF Chillicothe Sub and CN.",
+               url: "https://www.youtube.com/watch?v=7xdHH9KMSVk",
+               category: .crossing),
+
+    // ── Mountain Grades ───────────────────────────────────────────────────────
+    RailWebcam(name: "Cajon Pass",
+               location: "San Bernardino, CA",
+               railroad: "BNSF / UP",
+               description: "Iconic desert mountain pass with helper operations.",
+               url: "https://www.youtube.com/watch?v=-Q9VQJdqIlk",
+               category: .mountain),
+    RailWebcam(name: "Donner Pass",
+               location: "Truckee, CA",
+               railroad: "UP",
+               description: "Sierra Nevada crossing on the historic Overland Route.",
+               url: "https://www.youtube.com/watch?v=xKUkjFJkKgc",
+               category: .mountain),
+    RailWebcam(name: "Horseshoe Curve",
+               location: "Altoona, PA",
+               railroad: "NS",
+               description: "National Historic Landmark. One of the most-watched rail cams in the US.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Altoona",
+               category: .mountain),
+    RailWebcam(name: "Moffat Tunnel",
+               location: "Winter Park, CO",
+               railroad: "UP",
+               description: "6-mile tunnel through the Continental Divide.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Marias",
+               category: .mountain),
+
+    // ── Yards ─────────────────────────────────────────────────────────────────
+    RailWebcam(name: "Barstow Yard (BNSF)",
+               location: "Barstow, CA",
+               railroad: "BNSF",
+               description: "Major BNSF intermodal hub in the Mojave Desert.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Barstow",
+               category: .yard),
+    RailWebcam(name: "Chattanooga",
+               location: "Chattanooga, TN",
+               railroad: "NS / CSX",
+               description: "Tennessee Gateway — heavy manifest and coal traffic.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Chattanooga",
+               category: .yard),
+    RailWebcam(name: "Helper, UT (UP)",
+               location: "Helper, UT",
+               railroad: "UP",
+               description: "UP's famous Utah mountain grade with helper operations.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Helper",
+               category: .yard),
+
+    // ── Stations ──────────────────────────────────────────────────────────────
+    RailWebcam(name: "Laramie Station (UP)",
+               location: "Laramie, WY",
+               railroad: "UP",
+               description: "UP's Sherman Hill crossing — high-altitude mountain railroading.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Laramie",
+               category: .station),
+    RailWebcam(name: "Waycross (CSX)",
+               location: "Waycross, GA",
+               railroad: "CSX",
+               description: "CSX's busiest Southeast yard and the Folkston Funnel approach.",
+               url: "https://www.youtube.com/@VirtualRailfan/search?query=Waycross",
+               category: .station),
+
+    // ── All ───────────────────────────────────────────────────────────────────
+    RailWebcam(name: "VirtualRailfan — All Streams",
+               location: "YouTube",
+               railroad: "All railroads",
+               description: "Browse all live and recent VirtualRailfan streams.",
+               url: "https://www.youtube.com/@VirtualRailfan/streams",
+               category: .all),
+    RailWebcam(name: "Railstream Directory",
+               location: "railstream.net",
+               railroad: "All railroads",
+               description: "Full library of live and recorded railroad webcams.",
+               url: "https://www.railstream.net",
+               category: .all),
 ]
 
-// ── Main View ─────────────────────────────────────────────────────────────────
+// ── WebcamsView ───────────────────────────────────────────────────────────────
 struct WebcamsView: View {
-    @State private var filter = ""
+    @State private var selectedCategory: WebcamCategory = .all
+    @State private var webURL = ""
+    @State private var webName = ""
+    @State private var showWebPlayer = false
 
-    var filtered: [RailcamEntry] {
-        if filter.isEmpty { return ALL_RAILCAMS }
-        let q = filter.lowercased()
-        return ALL_RAILCAMS.filter {
-            $0.name.lowercased().contains(q) ||
-            $0.railroad.lowercased().contains(q) ||
-            $0.location.lowercased().contains(q)
-        }
+    var filtered: [RailWebcam] {
+        selectedCategory == .all ? curated : curated.filter { $0.category == selectedCategory }
     }
 
     var body: some View {
@@ -114,131 +133,220 @@ struct WebcamsView: View {
                 Color.bgPrimary.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Search bar
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.textMuted)
-                            .font(.system(size: 15))
-                        TextField("Filter by railroad or location…", text: $filter)
-                            .foregroundColor(.textPrimary)
-                            .font(.system(size: 14))
-                        if !filter.isEmpty {
-                            Button { filter = "" } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.textMuted)
-                                    .font(.system(size: 15))
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.bgCard)
-                    .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.border, lineWidth: 0.5))
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-
-                    Divider().background(Color.border)
-
-                    if filtered.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "video.slash")
-                                .font(.system(size: 40))
-                                .foregroundColor(.railBlueDark)
-                            Text("No cams match \"\(filter)\"")
-                                .font(.system(size: 15))
-                                .foregroundColor(.textMuted)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollView {
-                            VStack(spacing: 10) {
-                                ForEach(filtered) { cam in
-                                    WebcamCard(cam: cam)
+                    // Category filter chips
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(WebcamCategory.allCases, id: \.self) { cat in
+                                FilterChipView(label: cat.rawValue,
+                                               selected: selectedCategory == cat) {
+                                    selectedCategory = cat
                                 }
-                                Spacer(minLength: 40)
                             }
-                            .padding(.horizontal)
-                            .padding(.top, 10)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                     }
+                    .background(Color.bgPrimary)
+                    .overlay(Divider().background(Color.border), alignment: .bottom)
+
+                    List(filtered) { cam in
+                        WebcamRow(cam: cam, webURL: $webURL, webName: $webName, showWebPlayer: $showWebPlayer)
+                            .listRowBackground(Color.bgCard)
+                            .listRowSeparatorTint(Color.border)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
-            .navigationTitle("Railroad Webcams")
+            .navigationTitle("Webcams")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.bgPrimary, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+        .sheet(isPresented: $showWebPlayer) {
+            WebcamPlayerSheet(url: webURL, camName: webName)
+        }
     }
 }
 
-// ── Webcam Card ───────────────────────────────────────────────────────────────
-private struct WebcamCard: View {
-    let cam: RailcamEntry
+// ── Webcam row ────────────────────────────────────────────────────────────────
+struct WebcamRow: View {
+    let cam: RailWebcam
+    @Binding var webURL: String
+    @Binding var webName: String
+    @Binding var showWebPlayer: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Header
-            HStack(spacing: 10) {
-                Image(systemName: "video.fill")
-                    .foregroundColor(.railBlue)
-                    .font(.system(size: 18))
-                VStack(alignment: .leading, spacing: 2) {
+        Button {
+            webURL = cam.url
+            webName = cam.name
+            showWebPlayer = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.bgInput)
+                        .frame(width: 50, height: 50)
+                    Image(systemName: categoryIcon(cam.category))
+                        .font(.system(size: 22))
+                        .foregroundColor(.railBlue)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
                     Text(cam.name)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.textPrimary)
-                    Text(cam.location)
+                        .lineLimit(1)
+                    Text("\(cam.location) · \(cam.railroad)")
                         .font(.system(size: 12))
                         .foregroundColor(.textMuted)
+                    Text(cam.description)
+                        .font(.system(size: 11))
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(2)
                 }
-            }
 
-            // Tags
-            HStack(spacing: 6) {
-                RailcamTag(text: cam.railroad, primary: true)
-                RailcamTag(text: String(cam.subdivision.prefix(30)) + (cam.subdivision.count > 30 ? "…" : ""),
-                           primary: false)
+                Spacer()
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.railBlue)
             }
-
-            // Description
-            Text(cam.description)
-                .font(.system(size: 13))
-                .foregroundColor(.textSecondary)
-                .lineSpacing(3)
-
-            // Open button
-            Link(destination: URL(string: cam.url)!) {
-                HStack {
-                    Image(systemName: "safari.fill")
-                        .font(.system(size: 14))
-                    Text("Open Webcam")
-                        .font(.system(size: 14, weight: .medium))
-                }
-                .foregroundColor(.railBlue)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Color.railBlueDark)
-                .cornerRadius(10)
-            }
+            .padding(.vertical, 6)
         }
-        .padding(14)
-        .background(Color.bgCard)
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.border, lineWidth: 0.5))
+    }
+
+    private func categoryIcon(_ cat: WebcamCategory) -> String {
+        switch cat {
+        case .crossing:  return "xmark.circle"
+        case .yard:      return "building.2"
+        case .mountain:  return "mountain.2"
+        case .station:   return "building.columns"
+        case .all:       return "video"
+        }
     }
 }
 
-private struct RailcamTag: View {
-    let text: String
-    let primary: Bool
+// ── Webcam player sheet ───────────────────────────────────────────────────────
+struct WebcamPlayerSheet: View {
+    let url: String
+    let camName: String
+    @Environment(\.dismiss) var dismiss
+    @State private var loadFailed = false
+    @State private var isLoading = true
+
+    var parsedURL: URL? { URL(string: url) }
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundColor(primary ? .railBlue : .textMuted)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(primary ? Color.railBlueDark : Color.bgCard)
-            .cornerRadius(6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.border, lineWidth: 0.5))
+        NavigationView {
+            ZStack {
+                Color.bgPrimary.ignoresSafeArea()
+
+                if let validURL = parsedURL {
+                    if loadFailed {
+                        blockedView(validURL)
+                    } else {
+                        WebViewWithFallback(
+                            url: validURL,
+                            onLoadFailed: { loadFailed = true },
+                            onLoadFinished: { isLoading = false }
+                        )
+                        .ignoresSafeArea(edges: .bottom)
+                        .overlay {
+                            if isLoading {
+                                ProgressView("Loading…")
+                                    .tint(.railBlue)
+                                    .foregroundColor(.textMuted)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color.bgPrimary)
+                            }
+                        }
+                    }
+                } else {
+                    blockedView(nil)
+                }
+            }
+            .navigationTitle(camName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.bgPrimary, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") { dismiss() }.foregroundColor(.railBlue)
+                }
+                if let validURL = parsedURL {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            UIApplication.shared.open(validURL)
+                        } label: {
+                            Image(systemName: "safari").foregroundColor(.railBlue)
+                        }
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func blockedView(_ validURL: URL?) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "video.slash.fill")
+                .font(.system(size: 48)).foregroundColor(.textMuted)
+            Text("Can't play inline")
+                .font(.system(size: 18, weight: .semibold)).foregroundColor(.textPrimary)
+            Text("This webcam doesn't allow embedding.\nTap below to open it in Safari.")
+                .font(.system(size: 14)).foregroundColor(.textMuted)
+                .multilineTextAlignment(.center)
+            if let validURL {
+                Button {
+                    UIApplication.shared.open(validURL)
+                } label: {
+                    Label("Open in Safari", systemImage: "safari")
+                        .font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(Color.railBlueMid).cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// ── WebView with failure detection ────────────────────────────────────────────
+struct WebViewWithFallback: UIViewRepresentable {
+    let url: URL
+    var onLoadFailed: () -> Void
+    var onLoadFinished: () -> Void
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.navigationDelegate = context.coordinator
+        wv.backgroundColor = UIColor(red: 0.05, green: 0.1, blue: 0.18, alpha: 1)
+        wv.isOpaque = false
+        wv.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+        wv.load(URLRequest(url: url))
+        return wv
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        let parent: WebViewWithFallback
+        init(_ p: WebViewWithFallback) { parent = p }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            parent.onLoadFinished()
+        }
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            parent.onLoadFailed()
+        }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            parent.onLoadFailed()
+        }
     }
 }

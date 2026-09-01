@@ -90,12 +90,17 @@ class StoreManager: ObservableObject {
         return false
     }
 
-    // ── Listen for transactions (handles renewals, refunds) ───────────────────
+    // ── Listen for transactions (handles deferred purchases, renewals) ──────────
     private func listenForTransactions() -> Task<Void, Error> {
         Task.detached {
             for await result in Transaction.updates {
                 if case .verified(let transaction) = result {
                     await transaction.finish()
+                    // Post notification so UpgradeView can recheck and unlock premium
+                    await MainActor.run {
+                        NotificationCenter.default.post(
+                            name: .storeTransactionUpdated, object: nil)
+                    }
                 }
             }
         }
@@ -119,4 +124,8 @@ class StoreManager: ObservableObject {
 
 enum StoreError: Error {
     case failedVerification
+}
+
+extension Notification.Name {
+    static let storeTransactionUpdated = Notification.Name("storeTransactionUpdated")
 }

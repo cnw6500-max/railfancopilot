@@ -13,6 +13,8 @@ struct SavedLocationsView: View {
     @State private var selectedLocation: SavedLocationShared? = nil
     @State private var locationToDelete: SavedLocationShared? = nil
     @State private var showUpgrade     = false
+    @State private var showSpots = false
+    @State private var showTripLog = false
 
     private var atFreeLimit: Bool {
         !vm.isPremium && vm.savedLocations.count >= FREE_LOCATION_LIMIT
@@ -84,6 +86,16 @@ struct SavedLocationsView: View {
             .toolbarBackground(Color.bgPrimary, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    HStack(spacing: 14) {
+                        Button { showSpots = true } label: {
+                            Image(systemName: "camera.aperture").foregroundColor(.railBlue)
+                        }
+                        Button { showTripLog = true } label: {
+                            Image(systemName: "book.fill").foregroundColor(.railBlue)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         if atFreeLimit { showUpgrade = true }
@@ -95,6 +107,8 @@ struct SavedLocationsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showSpots) { SpotsView(vm: vm) }
+        .sheet(isPresented: $showTripLog) { TripLogView(vm: vm) }
         // Add sheet
         .sheet(isPresented: $showAddSheet) {
             AddLocationSheet(vm: vm)

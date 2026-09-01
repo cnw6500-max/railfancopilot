@@ -52,25 +52,6 @@ struct FirestoreSighting: Identifiable, Codable {
         self.commentCount = commentCount
     }
 
-    init(id: String? = nil, railroad: String, trainSymbol: String, location: String,
-         notes: String, latitude: Double, longitude: Double, reporterName: String,
-         authorId: String? = nil, timestampMs: Double, upvotes: Int,
-         photoUrl: String? = nil, commentCount: Int = 0) {
-        self.id = id
-        self.railroad = railroad
-        self.trainSymbol = trainSymbol
-        self.location = location
-        self.notes = notes
-        self.latitude = latitude
-        self.longitude = longitude
-        self.reporterName = reporterName
-        self.authorId = authorId
-        self.timestampMs = timestampMs
-        self.upvotes = upvotes
-        self.photoUrl = photoUrl
-        self.commentCount = commentCount
-    }
-
     // Custom decoder: tolerates documents written by the Android app, which
     // don't include commentCount and use "reporterUid" instead of "authorId".
     // Swift's auto-synthesized Decodable treats a missing non-optional key
@@ -231,9 +212,8 @@ class FirestoreManager: ObservableObject {
                 var results: [FirestoreSighting] = []
                 for doc in documents {
                     if var s = try? doc.data(as: FirestoreSighting.self) {
-                        let dLat = s.latitude - lat
-                        let dLon = s.longitude - lon
-                        s.distanceMiles = sqrt(dLat * dLat + dLon * dLon) * 69.0
+                        s.distanceMiles = FirestoreManager.haversineMiles(
+                            lat1: lat, lon1: lon, lat2: s.latitude, lon2: s.longitude)
                         if s.distanceMiles <= radiusMiles { results.append(s) }
                     }
                 }
@@ -351,9 +331,8 @@ class FirestoreManager: ObservableObject {
                 var results: [RailfanSpot] = []
                 for doc in docs {
                     if var spot = try? doc.data(as: RailfanSpot.self) {
-                        let dLat = spot.latitude - lat
-                        let dLon = spot.longitude - lon
-                        spot.distanceMiles = sqrt(dLat * dLat + dLon * dLon) * 69.0
+                        spot.distanceMiles = FirestoreManager.haversineMiles(
+                            lat1: lat, lon1: lon, lat2: spot.latitude, lon2: spot.longitude)
                         if spot.distanceMiles <= radiusMiles { results.append(spot) }
                     }
                 }
@@ -383,6 +362,17 @@ class FirestoreManager: ObservableObject {
     func upvoteSpot(spotId: String) {
         db.collection("railfan_spots").document(spotId)
             .updateData(["upvotes": FieldValue.increment(Int64(1))])
+    }
+
+    // Great-circle distance in miles (more accurate than a flat lat/lon approximation)
+    static func haversineMiles(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {
+        let R = 3958.8
+        let dLat = (lat2 - lat1) * .pi / 180
+        let dLon = (lon2 - lon1) * .pi / 180
+        let a = sin(dLat/2) * sin(dLat/2) +
+                cos(lat1 * .pi/180) * cos(lat2 * .pi/180) * sin(dLon/2) * sin(dLon/2)
+        let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return R * c
     }
 }
 
