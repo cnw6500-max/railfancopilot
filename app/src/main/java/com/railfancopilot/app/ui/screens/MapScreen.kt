@@ -65,6 +65,11 @@ private fun railroadLineColor(operator: String): androidx.compose.ui.graphics.Co
         "CANADIAN PACIFIC" in op || "CP " in op   -> androidx.compose.ui.graphics.Color(0xFF880E4F)
         "AMTRAK" in op                            -> androidx.compose.ui.graphics.Color(0xFF1A237E)
         "KANSAS CITY SOUTHERN" in op || "KCS" in op -> androidx.compose.ui.graphics.Color(0xFF558B2F)
+        "CPKC" in op                              -> androidx.compose.ui.graphics.Color(0xFF880E4F)
+        "METRA" in op || "METRO-NORTH" in op || "LIRR" in op || "LONG ISLAND" in op ||
+            "NJ TRANSIT" in op || "SEPTA" in op || "CALTRAIN" in op || "METROLINK" in op ||
+            "MBTA" in op || "VIRGINIA RAILWAY" in op || "FRONTRUNNER" in op || "TRINITY" in op
+                                                  -> androidx.compose.ui.graphics.Color(0xFF00897B)
         else                                      -> androidx.compose.ui.graphics.Color(0xFF546E7A)
     }
 }
@@ -84,6 +89,7 @@ fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
     val lastRefreshMs by vm.lastRefreshMs.collectAsState()
     val trainFetchError by vm.trainFetchError.collectAsState()
     val railwaySegments by vm.railwaySegments.collectAsState()
+    val abandonedLines by vm.abandonedLines.collectAsState()
 
     // Tick every 30 s so the stale-data banner age label stays fresh
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -99,6 +105,8 @@ fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
     var showSatellite by remember { mutableStateOf(false) }
     var showRailwayMap by remember { mutableStateOf(railOverlayDefault) }
     var showRailLines by remember { mutableStateOf(false) }
+    var showAbandoned by remember { mutableStateOf(false) }
+    var selectedAbandoned by remember { mutableStateOf<AbandonedRailLine?>(null) }
     var showSightings by remember { mutableStateOf(true) }
     var tappedSegmentName by remember { mutableStateOf<String?>(null) }
     var hasAnimatedToUser by remember { mutableStateOf(false) }
@@ -162,6 +170,25 @@ fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
             }
     }
 
+    // Fetch STB abandoned / railbanked lines when camera is idle at zoom ≥ 7.
+    LaunchedEffect(showAbandoned) {
+        if (!showAbandoned) return@LaunchedEffect
+        snapshotFlow {
+            cameraPositionState.isMoving to
+                cameraPositionState.projection?.visibleRegion?.latLngBounds
+        }
+            .filter { !it.first && it.second != null && cameraPositionState.position.zoom >= 7f }
+            .collect {
+                val bounds = it.second ?: return@collect
+                vm.fetchAbandonedLines(
+                    south = bounds.southwest.latitude,
+                    west  = bounds.southwest.longitude,
+                    north = bounds.northeast.latitude,
+                    east  = bounds.northeast.longitude
+                )
+            }
+    }
+
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val screenHeight = configuration.screenHeightDp.dp
@@ -196,16 +223,39 @@ fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
                     TileOverlay(tileProvider = railwayTileProvider, transparency = 0.0f)
                 }
 
-                // Bold Overpass rail lines — drawn under train markers
+                // STB abandoned / railbanked lines — dashed, drawn under active rail lines
+                if (showAbandoned) {
+                    abandonedLines.forEach { line ->
+                        Polyline(
+                            points = line.points,
+                            color = if (line.railbanked) RailGreen else Color(0xFFB0BEC5),
+                            width = 7f,
+                            pattern = listOf(
+                                com.google.android.gms.maps.model.Dash(18f),
+                                com.google.android.gms.maps.model.Gap(10f)
+                            ),
+                            clickable = true,
+                            onClick = { selectedAbandoned = line }
+                        )
+                    }
+                }
+
+                // Bold rail lines (STB/NTAD, Overpass fallback) — drawn under train markers
                 if (showRailLines) {
                     railwaySegments.forEach { segment ->
                         Polyline(
                             points = segment.points,
                             color = railroadLineColor(segment.operator),
-                            width = 8f,
+                            width = if (segment.tracks >= 2) 10f else 8f,
                             clickable = true,
                             onClick = {
-                                tappedSegmentName = segment.name.ifBlank { segment.operator }.ifBlank { "Railway" }
+                                tappedSegmentName = buildString {
+                                    append(segment.operator.ifBlank { segment.ownerMark }.ifBlank { "Railway" })
+                                    if (segment.subdivision.isNotBlank()) append(" · ${segment.subdivision} Sub")
+                                    else if (segment.name.isNotBlank()) append(" · ${segment.name}")
+                                    if (segment.yardName.isNotBlank()) append(" · ${segment.yardName} Yard")
+                                    if (segment.tracks >= 2) append(" · ${segment.tracks} tracks")
+                                }
                             }
                         )
                     }
@@ -429,6 +479,7 @@ fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
                     FilterChip("Satellite", showSatellite) { showSatellite = !showSatellite }
                     FilterChip("Rail Map", showRailwayMap) { showRailwayMap = !showRailwayMap }
                     FilterChip("Rail Lines", showRailLines) { showRailLines = !showRailLines }
+                    FilterChip("Abandoned", showAbandoned) { showAbandoned = !showAbandoned }
                     FilterChip("Sightings", showSightings) { showSightings = !showSightings }
                     FilterChip("Station Board", false) { showStationBoard = true }
                 }
@@ -541,6 +592,97 @@ fun MapScreen(vm: RailFanViewModel, onNavigateToCommunity: () -> Unit = {}) {
             showStationBoard = false
             vm.clearStationDepartures()
         })
+    }
+
+    selectedAbandoned?.let { line ->
+        AbandonedLineSheet(line) { selectedAbandoned = null }
+    }
+}
+
+// ── Abandoned / railbanked line detail sheet (STB docket data) ─────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AbandonedLineSheet(line: AbandonedRailLine, onDismiss: () -> Unit) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val accent = if (line.railbanked) RailGreen else Color(0xFFB0BEC5)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = BgCard,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(accent.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (line.railbanked) Icons.Default.Hiking else Icons.Default.DirectionsRailway,
+                        null, tint = accent, modifier = Modifier.size(22.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(line.railroad.ifBlank { "Unknown railroad" }, color = TextPrimary,
+                        fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(line.statusLabel, color = accent, fontSize = 12.sp)
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, "Close", tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            HorizontalDivider(color = Border)
+
+            @Composable
+            fun InfoRow(label: String, value: String) {
+                if (value.isBlank()) return
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Text(label, color = TextMuted, fontSize = 12.sp, modifier = Modifier.width(96.dp))
+                    Text(value, color = TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                }
+            }
+
+            InfoRow("Docket", line.docket)
+            InfoRow("Location", listOf(line.county, line.state).filter { it.isNotBlank() }.joinToString(", "))
+            if (line.lengthMiles > 0) InfoRow("Length", String.format("%.2f mi", line.lengthMiles))
+            InfoRow("Filed", line.filed)
+            InfoRow("Approved", line.approved)
+            InfoRow(if (line.railbanked) "Railbanked" else "Completed", line.completed)
+
+            if (line.moreInfo.isNotBlank()) {
+                Text(line.moreInfo, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+            }
+
+            if (line.link.isNotBlank()) {
+                Button(
+                    onClick = { runCatching { uriHandler.openUri(line.link) } },
+                    colors = ButtonDefaults.buttonColors(containerColor = RailBlueDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("STB docket records", fontSize = 13.sp)
+                }
+            }
+
+            Text(
+                "Source: Surface Transportation Board, Office of Environmental Analysis. " +
+                "Informational only — does not establish the legal status of any rail line.",
+                color = TextMuted, fontSize = 10.sp, lineHeight = 13.sp
+            )
+        }
     }
 }
 
@@ -805,6 +947,7 @@ fun TrainDetailSheet(train: TrainLocation, vm: RailFanViewModel, onDismiss: () -
         SaveLocationDialog(
             defaultLat = loc?.latitude,
             defaultLon = loc?.longitude,
+            lookupRailInfo = { lat, lon -> vm.lookupRailInfo(lat, lon) },
             onDismiss = { showSaveDialog = false },
             onSave = { name, notes, subdivision, scannerFreq, photoTips, lat, lon ->
                 vm.saveLocation(lat, lon, name, notes, subdivision, scannerFreq, photoTips)

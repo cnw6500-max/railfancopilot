@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.railfancopilot.app.data.models.RailInfo
 import com.railfancopilot.app.data.models.RailfanSpot
 import com.railfancopilot.app.data.models.SavedLocation
 import com.railfancopilot.app.data.models.TrainFrequency
@@ -164,6 +165,7 @@ fun SpotsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
             userLon = userLocation?.longitude,
             userName = userName,
             isSubmitting = isSubmitting,
+            lookupRailInfo = { lat, lon -> vm.lookupRailInfo(lat, lon) },
             onDismiss = { showSubmit = false },
             onSubmit = { spot, photoBytes ->
                 vm.submitSpot(spot, photoBytes)
@@ -513,6 +515,7 @@ private fun SubmitSpotDialog(
     userName: String,
     isSubmitting: Boolean,
     initialSpot: RailfanSpot? = null,
+    lookupRailInfo: (suspend (Double, Double) -> RailInfo?)? = null,
     onDismiss: () -> Unit,
     onSubmit: (RailfanSpot, ByteArray?) -> Unit
 ) {
@@ -521,6 +524,24 @@ private fun SubmitSpotDialog(
     var name            by remember { mutableStateOf(initialSpot?.name ?: "") }
     var railroad        by remember { mutableStateOf(initialSpot?.railroad ?: "") }
     var subdivision     by remember { mutableStateOf(initialSpot?.subdivision ?: "") }
+    var autoFillNote    by remember { mutableStateOf<String?>(null) }
+
+    // Auto-fill railroad / subdivision from the STB rail network for new spots.
+    LaunchedEffect(userLat, userLon) {
+        if (isEditMode || lookupRailInfo == null) return@LaunchedEffect
+        val lat = userLat ?: return@LaunchedEffect
+        val lon = userLon ?: return@LaunchedEffect
+        if (railroad.isNotBlank() && subdivision.isNotBlank()) return@LaunchedEffect
+        val info = lookupRailInfo(lat, lon) ?: return@LaunchedEffect
+        if (railroad.isBlank() && info.ownerMark.isNotBlank()) railroad = info.ownerMark.uppercase()
+        if (subdivision.isBlank() && info.subdivision.isNotBlank()) subdivision = info.subdivision
+        autoFillNote = buildString {
+            append("Nearest track: ").append(info.ownerName.ifBlank { info.ownerMark })
+            if (info.subdivision.isNotBlank()) append(" · ").append(info.subdivision).append(" Sub")
+            if (info.yardName.isNotBlank()) append(" · ").append(info.yardName).append(" Yard")
+            append(" · ").append(info.distanceM.toInt()).append(" m away")
+        }
+    }
     var notes           by remember { mutableStateOf(initialSpot?.notes ?: "") }
     var photoAngles     by remember { mutableStateOf(initialSpot?.photoAngles ?: "") }
     var safetyNotes     by remember { mutableStateOf(initialSpot?.safetyNotes ?: "") }
@@ -581,6 +602,13 @@ private fun SubmitSpotDialog(
                 SpotField("Spot name *", name, { name = it }, "e.g. MP 330 Overpass")
                 SpotField("Railroad", railroad, { railroad = it.uppercase() }, "e.g. BNSF")
                 SpotField("Subdivision", subdivision, { subdivision = it }, "e.g. Transcon")
+                autoFillNote?.let { note ->
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Default.AutoAwesome, null, tint = RailBlue, modifier = Modifier.size(12.dp))
+                        Text(note, color = TextMuted, fontSize = 11.sp)
+                    }
+                }
                 SpotField("Notes / description", notes, { notes = it }, "What makes this spot great?", singleLine = false)
                 SpotField("Photo angles", photoAngles, { photoAngles = it }, "e.g. Eastbound facing west", singleLine = false)
                 SpotField("Safety notes", safetyNotes, { safetyNotes = it }, "Hazards, sight lines, fencing")

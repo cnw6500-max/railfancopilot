@@ -407,13 +407,49 @@ enum class RailAlertType(val label: String, val emoji: String) {
     SPECIAL_MOVE("Special Movement", "🌟")
 }
 
-// ── Railway map lines (from Overpass API) ────────────────────────────────────
+// ── Railway map lines (STB/NTAD ArcGIS primary, Overpass fallback) ──────────
 data class RailwaySegment(
     val id: Long,
     val points: List<com.google.android.gms.maps.model.LatLng>,
-    val operator: String,   // e.g. "BNSF Railway"
-    val name: String        // subdivision name from OSM tags
+    val operator: String,           // display name, e.g. "BNSF Railway"
+    val name: String,               // subdivision name (NTAD SUBDIV or OSM name)
+    val ownerMark: String = "",     // AAR reporting mark, e.g. "BNSF", "CSXT"
+    val subdivision: String = "",
+    val division: String = "",
+    val tracks: Int = 0,
+    val yardName: String = "",
+    val passenger: Boolean = false
 )
+
+/** Result of a nearest-rail-line lookup (STB NTAD layer) for a lat/lon. */
+data class RailInfo(
+    val ownerMark: String,
+    val ownerName: String,
+    val subdivision: String,
+    val division: String,
+    val yardName: String,
+    val tracks: Int,
+    val distanceM: Double
+)
+
+/** STB abandoned or railbanked (rails-to-trails) line with docket metadata. */
+data class AbandonedRailLine(
+    val id: String,
+    val points: List<com.google.android.gms.maps.model.LatLng>,
+    val railbanked: Boolean,
+    val docket: String,
+    val railroad: String,
+    val state: String,
+    val county: String,
+    val filed: String,
+    val approved: String,
+    val completed: String,
+    val lengthMiles: Double,
+    val moreInfo: String,
+    val link: String
+) {
+    val statusLabel: String get() = if (railbanked) "Railbanked (rails-to-trails)" else "Abandoned"
+}
 
 data class RailAlert(
     val id: String,

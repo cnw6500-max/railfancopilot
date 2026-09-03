@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.railfancopilot.app.data.models.RailInfo
 import com.railfancopilot.app.data.models.SavedLocation
 import com.railfancopilot.app.ui.components.EmptyState
 import com.railfancopilot.app.ui.components.ProGateScreen
@@ -108,6 +109,7 @@ fun SavedLocationsScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
         SaveLocationDialog(
             defaultLat = userLocation?.latitude,
             defaultLon = userLocation?.longitude,
+            lookupRailInfo = { lat, lon -> vm.lookupRailInfo(lat, lon) },
             onDismiss = { showSaveDialog = false },
             onSave = { name, notes, subdivision, scannerFreq, photoTips, lat, lon ->
                 vm.saveLocation(lat, lon, name, notes, subdivision, scannerFreq, photoTips)
@@ -206,12 +208,30 @@ fun SavedLocationCard(location: SavedLocation, onDelete: () -> Unit) {
 fun SaveLocationDialog(
     defaultLat: Double?,
     defaultLon: Double?,
+    lookupRailInfo: (suspend (Double, Double) -> RailInfo?)? = null,
     onDismiss: () -> Unit,
     onSave: (name: String, notes: String?, subdivision: String?, scannerFreq: String?, photoTips: String?, lat: Double, lon: Double) -> Unit
 ) {
     var name        by remember { mutableStateOf("") }
     var notes       by remember { mutableStateOf("") }
     var subdivision by remember { mutableStateOf("") }
+    var autoFillNote by remember { mutableStateOf<String?>(null) }
+
+    // Auto-fill subdivision from the STB rail network (nearest track to the GPS fix).
+    LaunchedEffect(defaultLat, defaultLon) {
+        val lat = defaultLat ?: return@LaunchedEffect
+        val lon = defaultLon ?: return@LaunchedEffect
+        val info = lookupRailInfo?.invoke(lat, lon) ?: return@LaunchedEffect
+        if (subdivision.isBlank()) {
+            subdivision = when {
+                info.subdivision.isNotBlank() && info.ownerMark.isNotBlank() -> "${info.ownerMark} ${info.subdivision} Sub"
+                info.subdivision.isNotBlank() -> "${info.subdivision} Sub"
+                info.ownerName.isNotBlank() -> info.ownerName
+                else -> ""
+            }
+        }
+        autoFillNote = "Nearest track: ${info.ownerName.ifBlank { info.ownerMark }} · ${info.distanceM.toInt()} m"
+    }
     var scannerFreq by remember { mutableStateOf("") }
     var photoTips   by remember { mutableStateOf("") }
 
@@ -309,6 +329,9 @@ fun SaveLocationDialog(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { frequencyFocus.requestFocus() })
                 )
+                autoFillNote?.let { note ->
+                    Text(note, color = TextMuted, fontSize = 11.sp)
+                }
 
                 OutlinedTextField(
                     value = scannerFreq,

@@ -2197,10 +2197,36 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         if (isFetchingRailLines) return
         viewModelScope.launch {
             isFetchingRailLines = true
-            val segments = com.railfancopilot.app.data.repository.OverpassFetcher
-                .fetchRailwaySegments(south, west, north, east)
+            // Primary: STB / NTAD North American Rail Network (owner, subdivision, tracks).
+            // Fallback: OpenStreetMap via Overpass when ArcGIS is unreachable.
+            var segments = com.railfancopilot.app.data.repository.StbRailFetcher
+                .fetchRailSegments(south, west, north, east)
+            if (segments.isEmpty()) {
+                segments = com.railfancopilot.app.data.repository.OverpassFetcher
+                    .fetchRailwaySegments(south, west, north, east)
+            }
             if (segments.isNotEmpty()) _railwaySegments.value = segments
             isFetchingRailLines = false
+        }
+    }
+
+    /** Nearest STB rail line to a point — used to auto-fill railroad/subdivision on new spots. */
+    suspend fun lookupRailInfo(lat: Double, lon: Double): com.railfancopilot.app.data.models.RailInfo? =
+        com.railfancopilot.app.data.repository.StbRailFetcher.lookupRailInfo(lat, lon)
+
+    // ── Abandoned / railbanked lines (STB) ─────────────────────────────────────
+    private val _abandonedLines = MutableStateFlow<List<com.railfancopilot.app.data.models.AbandonedRailLine>>(emptyList())
+    val abandonedLines: StateFlow<List<com.railfancopilot.app.data.models.AbandonedRailLine>> = _abandonedLines.asStateFlow()
+    @Volatile private var isFetchingAbandoned = false
+
+    fun fetchAbandonedLines(south: Double, west: Double, north: Double, east: Double) {
+        if (isFetchingAbandoned) return
+        viewModelScope.launch {
+            isFetchingAbandoned = true
+            val lines = com.railfancopilot.app.data.repository.StbRailFetcher
+                .fetchAbandonedLines(south, west, north, east)
+            if (lines.isNotEmpty()) _abandonedLines.value = lines
+            isFetchingAbandoned = false
         }
     }
 
