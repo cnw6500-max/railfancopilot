@@ -366,6 +366,14 @@ struct AddSpotSheet: View {
                             if on, let loc = vm.userLocation {
                                 latText = String(format: "%.6f", loc.latitude)
                                 lonText = String(format: "%.6f", loc.longitude)
+                                Task {
+                                    if let info = await StbRailService.shared.lookupRailInfo(lat: loc.latitude, lon: loc.longitude) {
+                                        await MainActor.run {
+                                            if railroad.isEmpty, !info.ownerMark.isEmpty { railroad = info.ownerMark.uppercased() }
+                                            if subdivision.isEmpty, !info.subdivision.isEmpty { subdivision = "\(info.subdivision) Sub" }
+                                        }
+                                    }
+                                }
                             }
                         }
                     TextField("Latitude", text: $latText)
@@ -611,6 +619,38 @@ struct CuratedSpotRow: View {
         case .public_:  return Color.railBlueMid
         case .roadside: return .orange
         }
+    }
+}
+
+// ── Custom spot list row ────────────────────────────────────────────────────
+struct CustomCuratedSpotRow: View {
+    let spot: CustomRailfanSpot
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(spot.access)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.railBlueMid).cornerRadius(4)
+                Image(systemName: "star.fill")
+                    .font(.system(size: 22)).foregroundColor(.railBlueDark)
+            }
+            .frame(width: 44)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(spot.name)
+                    .font(.system(size: 14, weight: .semibold)).foregroundColor(.textPrimary)
+                Text("\(spot.location), \(spot.state) · \(spot.railroad)")
+                    .font(.system(size: 12)).foregroundColor(.textMuted)
+                Text(spot.description)
+                    .font(.system(size: 11)).foregroundColor(.textSecondary).lineLimit(2)
+            }
+
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundColor(.textMuted)
+        }
+        .padding(.vertical, 6)
     }
 }
 
@@ -1050,9 +1090,25 @@ struct SubmitSpotSheet: View {
     @State private var isPublic = true
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var photoData: Data? = nil
+    @State private var autoFillNote: String? = nil
 
     private let freqOptions = ["UNKNOWN", "LIGHT", "MODERATE", "HEAVY"]
     private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// Auto-fill railroad / subdivision from the nearest STB rail line.
+    private func autoFillFromRailNetwork() async {
+        guard let loc = vm.userLocation, railroad.isEmpty || subdivision.isEmpty else { return }
+        guard let info = await StbRailService.shared.lookupRailInfo(lat: loc.latitude, lon: loc.longitude) else { return }
+        await MainActor.run {
+            if railroad.isEmpty, !info.ownerMark.isEmpty { railroad = info.ownerMark.uppercased() }
+            if subdivision.isEmpty, !info.subdivision.isEmpty { subdivision = "\(info.subdivision) Sub" }
+            var note = "Nearest track: " + (info.ownerName.isEmpty ? info.ownerMark : info.ownerName)
+            if !info.subdivision.isEmpty { note += " · \(info.subdivision) Sub" }
+            if !info.yardName.isEmpty { note += " · \(info.yardName) Yard" }
+            note += " · \(Int(info.distanceM)) m away"
+            autoFillNote = note
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -1077,6 +1133,12 @@ struct SubmitSpotSheet: View {
                         SpotTextField(label: "Spot Name *", placeholder: "e.g. Galesburg Tower", text: $name)
                         SpotTextField(label: "Railroad", placeholder: "e.g. BNSF", text: $railroad)
                         SpotTextField(label: "Subdivision", placeholder: "e.g. Chillicothe Sub", text: $subdivision)
+                        if let note = autoFillNote {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles").foregroundColor(.railBlue).font(.system(size: 11))
+                                Text(note).font(.system(size: 11)).foregroundColor(.textMuted)
+                            }
+                        }
                         SpotTextField(label: "Notes", placeholder: "What makes this spot great?", text: $notes, multiline: true)
                         SpotTextField(label: "Safety Notes", placeholder: "Trespassing concerns, sight lines…", text: $safetyNotes, multiline: true)
                         SpotTextField(label: "Parking Notes", placeholder: "Where to park…", text: $parkingNotes)
@@ -1179,6 +1241,7 @@ struct SubmitSpotSheet: View {
                 }
             }
         }
+        .task(id: vm.userLocation) { await autoFillFromRailNetwork() }
         .preferredColorScheme(.dark)
     }
 

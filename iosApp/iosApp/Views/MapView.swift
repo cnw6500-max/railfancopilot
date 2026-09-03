@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import UIKit
 import shared
 
 extension TrainLocation: @retroactive Identifiable {}
@@ -45,6 +46,15 @@ struct MapView: View {
     @State private var searchTask: Task<Void, Never>? = nil
     @State private var searchPin: CLLocationCoordinate2D? = nil
 
+    // STB / NTAD rail-line overlays
+    @State private var showRailLines: Bool = false
+    @State private var showAbandoned: Bool = false
+    @State private var railSegments: [RailSegment] = []
+    @State private var abandonedLines: [AbandonedRailLine] = []
+    @State private var selectedAbandoned: AbandonedRailLine? = nil
+    @State private var tappedSegmentLabel: String? = nil
+    @State private var overlayFetchTask: Task<Void, Never>? = nil
+
     private let railroads: [(name: String, label: String)] = [
         ("AMTRAK", "Amtrak"), ("BNSF", "BNSF"), ("UP", "UP"),
         ("CSX", "CSX"), ("NS", "NS"), ("CN", "CN"),
@@ -58,6 +68,61 @@ struct MapView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            mapLayer
+            contentOverlay
+        }
+        .onAppear { showRailOverlay = vm.railOverlayDefault }
+        .onChange(of: vm.userLocation) { loc in
+            guard let loc, !centeredOnUser else { return }
+            centeredOnUser = true
+            region = MKCoordinateRegion(center: loc,
+                                        span: MKCoordinateSpan(latitudeDelta: 3.0, longitudeDelta: 3.0))
+        }
+        .sheet(item: $selectedTrain) { train in
+            RichTrainDetailSheet(train: train, vm: vm)
+        }
+        .sheet(item: $selectedSighting) { sighting in
+            SightingMapDetailSheet(sighting: sighting)
+        }
+        .sheet(item: $selectedYard) { yard in
+            YardDetailSheet(yard: yard)
+        }
+        .sheet(isPresented: $showStationBoard) {
+            StationBoardSheet(vm: vm)
+        }
+        .sheet(item: $selectedAbandoned) { line in
+            AbandonedLineSheet(line: line)
+        }
+        .onChange(of: showRailLines) { on in
+            if on { scheduleOverlayFetch(immediate: true) } else { railSegments = []; tappedSegmentLabel = nil }
+        }
+        .onChange(of: showAbandoned) { on in
+            if on { scheduleOverlayFetch(immediate: true) } else { abandonedLines = [] }
+        }
+    }
+
+    /// Debounced fetch of STB rail-line / abandoned-line overlays for the visible region.
+    /// Rail lines need span ≤ ~1.5° (≈ zoom 9); abandoned lines ≤ ~6° (≈ zoom 7).
+    private func scheduleOverlayFetch(immediate: Bool = false) {
+        guard showRailLines || showAbandoned else { return }
+        overlayFetchTask?.cancel()
+        let region = self.region
+        overlayFetchTask = Task {
+            if !immediate { try? await Task.sleep(nanoseconds: 600_000_000) }
+            guard !Task.isCancelled else { return }
+            if showRailLines && region.span.latitudeDelta <= 1.5 {
+                let segs = await StbRailService.shared.fetchRailSegments(region: region)
+                if !Task.isCancelled && !segs.isEmpty { await MainActor.run { railSegments = segs } }
+            }
+            if showAbandoned && region.span.latitudeDelta <= 6.0 {
+                let lines = await StbRailService.shared.fetchAbandonedLines(region: region)
+                if !Task.isCancelled && !lines.isEmpty { await MainActor.run { abandonedLines = lines } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mapLayer: some View {
             // Native map with trails + tile overlay + sightings + yards
             RailFanMapRepresentable(
                 region: $region,
@@ -68,15 +133,55 @@ struct MapView: View {
                 sightings: showSightings ? FirestoreManager.shared.sightings : [],
                 yards: showYards ? classificationYards : [],
                 searchPin: searchPin,
+                railSegments: showRailLines ? railSegments : [],
+                abandonedLines: showAbandoned ? abandonedLines : [],
                 onTrainTapped: { selectedTrain = $0 },
                 onSightingTapped: { selectedSighting = $0 },
                 onYardTapped: { selectedYard = $0 },
-                onRegionChanged: { region = $0 }
+                onSegmentTapped: { tappedSegmentLabel = $0.label },
+                onAbandonedTapped: { selectedAbandoned = $0 },
+                onMapTapped: { tappedSegmentLabel = nil },
+                onRegionChanged: { region = $0; scheduleOverlayFetch() }
             )
             .ignoresSafeArea()
+    }
 
-            VStack(spacing: 0) {
-                // ── Search bar ────────────────────────────────────────────────
+    @ViewBuilder
+    private var contentOverlay: some View {
+        VStack(spacing: 0) {
+            searchBarSection
+            searchResultsSection
+            filterChipsSection
+            staleDataBanner
+            networkErrorBanner
+            Spacer()
+            tappedSegmentCapsule
+            fabControlsSection
+        }
+    }
+
+    // ── Tapped rail-line label ─────────────────────────────────────
+    @ViewBuilder
+    private var tappedSegmentCapsule: some View {
+        if let label = tappedSegmentLabel {
+            HStack(spacing: 8) {
+                Image(systemName: "tram.fill").foregroundColor(.railBlue).font(.system(size: 12))
+                Text(label).font(.system(size: 13)).foregroundColor(.textPrimary).lineLimit(2)
+                Button { tappedSegmentLabel = nil } label: {
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundColor(.textMuted)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Color.bgCard.opacity(0.95))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.borderLight, lineWidth: 0.5))
+            .padding(.bottom, 8)
+        }
+    }
+
+    // ── Search bar ────────────────────────────────────────────────
+    @ViewBuilder
+    private var searchBarSection: some View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.textMuted)
@@ -107,8 +212,11 @@ struct MapView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 .shadow(color: .black.opacity(0.3), radius: 4)
+    }
 
-                // Search results dropdown
+    // Search results dropdown
+    @ViewBuilder
+    private var searchResultsSection: some View {
                 if showSearchResults && !vm.searchResults.isEmpty {
                     VStack(spacing: 0) {
                         ForEach(vm.searchResults) { place in
@@ -139,8 +247,11 @@ struct MapView: View {
                     .padding(.horizontal, 10)
                     .shadow(color: .black.opacity(0.3), radius: 6)
                 }
+    }
 
-                // ── Filter chips (railroad + map layer) ───────────────────────
+    // ── Filter chips (railroad + map layer) ───────────────────────
+    @ViewBuilder
+    private var filterChipsSection: some View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         FilterChipView(label: "All", selected: vm.selectedRailroad == nil) {
@@ -154,14 +265,19 @@ struct MapView: View {
                         Divider().frame(height: 20).background(Color.border)
                         FilterChipView(label: "Satellite", selected: showSatellite) { showSatellite.toggle() }
                         FilterChipView(label: "Yards", selected: showYards) { showYards.toggle() }
+                        FilterChipView(label: "Rail Lines", selected: showRailLines) { showRailLines.toggle() }
+                        FilterChipView(label: "Abandoned", selected: showAbandoned) { showAbandoned.toggle() }
                         FilterChipView(label: "Station Board", selected: false) { showStationBoard = true }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                 }
                 .background(Color.bgPrimary.opacity(0.92))
+    }
 
-                // ── Stale data banner ─────────────────────────────────────────
+    // ── Stale data banner ─────────────────────────────────────────
+    @ViewBuilder
+    private var staleDataBanner: some View {
                 if isStale {
                     HStack(spacing: 8) {
                         Image(systemName: "clock.badge.exclamationmark")
@@ -182,8 +298,11 @@ struct MapView: View {
                     .padding(.vertical, 8)
                     .background(Color(red: 0.3, green: 0.15, blue: 0.0).opacity(0.9))
                 }
+    }
 
-                // ── Network error banner ──────────────────────────────────────
+    // ── Network error banner ──────────────────────────────────────
+    @ViewBuilder
+    private var networkErrorBanner: some View {
                 if let err = vm.fetchError {
                     HStack(spacing: 8) {
                         Image(systemName: "wifi.exclamationmark").foregroundColor(.red).font(.system(size: 13))
@@ -197,10 +316,11 @@ struct MapView: View {
                     .padding(.vertical, 8)
                     .background(Color(red: 0.25, green: 0.0, blue: 0.0).opacity(0.9))
                 }
+    }
 
-                Spacer()
-
-                // ── FAB controls ──────────────────────────────────────────────
+    // ── FAB controls ──────────────────────────────────────────────
+    @ViewBuilder
+    private var fabControlsSection: some View {
                 HStack {
                     // Train count badge
                     Text("\(vm.filteredTrains.count) trains")
@@ -271,27 +391,6 @@ struct MapView: View {
                     .padding(.trailing, 16)
                 }
                 .padding(.bottom, 24)
-            }
-        }
-        .onAppear { showRailOverlay = vm.railOverlayDefault }
-        .onChange(of: vm.userLocation) { loc in
-            guard let loc, !centeredOnUser else { return }
-            centeredOnUser = true
-            region = MKCoordinateRegion(center: loc,
-                                        span: MKCoordinateSpan(latitudeDelta: 3.0, longitudeDelta: 3.0))
-        }
-        .sheet(item: $selectedTrain) { train in
-            RichTrainDetailSheet(train: train, vm: vm)
-        }
-        .sheet(item: $selectedSighting) { sighting in
-            SightingMapDetailSheet(sighting: sighting)
-        }
-        .sheet(item: $selectedYard) { yard in
-            YardDetailSheet(yard: yard)
-        }
-        .sheet(isPresented: $showStationBoard) {
-            StationBoardSheet(vm: vm)
-        }
     }
 
     private func centerOnUser() {
@@ -323,9 +422,14 @@ struct RailFanMapRepresentable: UIViewRepresentable {
     let sightings: [FirestoreSighting]
     let yards: [ClassificationYard]
     let searchPin: CLLocationCoordinate2D?
+    var railSegments: [RailSegment] = []
+    var abandonedLines: [AbandonedRailLine] = []
     var onTrainTapped: (TrainLocation) -> Void
     var onSightingTapped: (FirestoreSighting) -> Void
     var onYardTapped: (ClassificationYard) -> Void
+    var onSegmentTapped: (RailSegment) -> Void = { _ in }
+    var onAbandonedTapped: (AbandonedRailLine) -> Void = { _ in }
+    var onMapTapped: () -> Void = {}
     var onRegionChanged: (MKCoordinateRegion) -> Void
 
     func makeUIView(context: Context) -> MKMapView {
@@ -333,6 +437,12 @@ struct RailFanMapRepresentable: UIViewRepresentable {
         map.delegate = context.coordinator
         map.showsUserLocation = true
         map.setRegion(region, animated: false)
+        // Tap recognizer for polyline overlays (rail lines / abandoned lines).
+        let tap = UITapGestureRecognizer(target: context.coordinator,
+                                         action: #selector(Coordinator.handleTap(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delegate = context.coordinator
+        map.addGestureRecognizer(tap)
         return map
     }
 
@@ -365,11 +475,36 @@ struct RailFanMapRepresentable: UIViewRepresentable {
             }
         }
 
-        // Train trails (polylines)
+        // Train trails (polylines) — leave rail/abandoned overlays alone
         let polys = map.overlays.compactMap { $0 as? MKPolyline }
+            .filter { !($0 is RailLinePolyline) && !($0 is AbandonedPolyline) }
         map.removeOverlays(polys)
         for (_, coords) in trainTrails where coords.count >= 2 {
             map.addOverlay(MKPolyline(coordinates: coords, count: coords.count), level: .aboveRoads)
+        }
+
+        // STB abandoned / railbanked lines (dashed, under rail lines)
+        let abandonedIds = Set(abandonedLines.map { $0.id })
+        if context.coordinator.abandonedIds != abandonedIds {
+            map.removeOverlays(map.overlays.compactMap { $0 as? AbandonedPolyline })
+            for line in abandonedLines {
+                let p = AbandonedPolyline(coordinates: line.coordinates, count: line.coordinates.count)
+                p.line = line
+                map.addOverlay(p, level: .aboveRoads)
+            }
+            context.coordinator.abandonedIds = abandonedIds
+        }
+
+        // STB / NTAD rail lines (owner-colored)
+        let segIds = Set(railSegments.map { $0.id })
+        if context.coordinator.segmentIds != segIds {
+            map.removeOverlays(map.overlays.compactMap { $0 as? RailLinePolyline })
+            for seg in railSegments {
+                let p = RailLinePolyline(coordinates: seg.coordinates, count: seg.coordinates.count)
+                p.segment = seg
+                map.addOverlay(p, level: .aboveRoads)
+            }
+            context.coordinator.segmentIds = segIds
         }
 
         // Sighting annotations
@@ -398,10 +533,59 @@ struct RailFanMapRepresentable: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    class Coordinator: NSObject, MKMapViewDelegate {
+    class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var parent: RailFanMapRepresentable
         var suppressRegionCallback = false
+        var segmentIds: Set<Int> = []
+        var abandonedIds: Set<String> = []
         init(_ p: RailFanMapRepresentable) { parent = p }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc func handleTap(_ g: UITapGestureRecognizer) {
+            guard let map = g.view as? MKMapView else { return }
+            let pt = g.location(in: map)
+            // Let annotation views handle their own taps.
+            if let hit = map.hitTest(pt, with: nil), hit is MKAnnotationView || hit.superview is MKAnnotationView { return }
+            let coord = map.convert(pt, toCoordinateFrom: map)
+            let mp = MKMapPoint(coord)
+            // ~14 screen points of tolerance, in map points
+            let tol = map.visibleMapRect.size.width / Double(max(map.bounds.width, 1)) * 14
+            let probe = MKMapRect(x: mp.x - tol, y: mp.y - tol, width: tol * 2, height: tol * 2)
+
+            var bestSeg: RailLinePolyline? = nil
+            var bestAb: AbandonedPolyline? = nil
+            var bestDist = Double.greatestFiniteMagnitude
+            for ov in map.overlays {
+                guard let poly = ov as? MKPolyline, poly is RailLinePolyline || poly is AbandonedPolyline,
+                      poly.boundingMapRect.intersects(probe) else { continue }
+                let d = Self.distance(from: mp, to: poly)
+                if d < tol && d < bestDist {
+                    bestDist = d
+                    bestSeg = poly as? RailLinePolyline
+                    bestAb = poly as? AbandonedPolyline
+                }
+            }
+            if let s = bestSeg?.segment { parent.onSegmentTapped(s) }
+            else if let a = bestAb?.line { parent.onAbandonedTapped(a) }
+            else { parent.onMapTapped() }
+        }
+
+        private static func distance(from p: MKMapPoint, to poly: MKPolyline) -> Double {
+            let pts = poly.points()
+            var best = Double.greatestFiniteMagnitude
+            guard poly.pointCount >= 2 else { return best }
+            for i in 0..<(poly.pointCount - 1) {
+                let a = pts[i], b = pts[i + 1]
+                let dx = b.x - a.x, dy = b.y - a.y
+                let len2 = dx * dx + dy * dy
+                let t = len2 == 0 ? 0 : max(0, min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2))
+                let cx = a.x + t * dx - p.x, cy = a.y + t * dy - p.y
+                best = min(best, (cx * cx + cy * cy).squareRoot())
+            }
+            return best
+        }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated: Bool) {
             guard !suppressRegionCallback else { return }
@@ -410,6 +594,22 @@ struct RailFanMapRepresentable: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tile = overlay as? MKTileOverlay { return MKTileOverlayRenderer(tileOverlay: tile) }
+            if let rail = overlay as? RailLinePolyline {
+                let r = MKPolylineRenderer(polyline: rail)
+                r.strokeColor = railLineUIColor(rail.segment.ownerName.isEmpty ? rail.segment.ownerMark : rail.segment.ownerName)
+                r.lineWidth = rail.segment.tracks >= 2 ? 5 : 4
+                r.lineCap = .round
+                return r
+            }
+            if let ab = overlay as? AbandonedPolyline {
+                let r = MKPolylineRenderer(polyline: ab)
+                r.strokeColor = ab.line.railbanked
+                    ? UIColor(red: 0.29, green: 0.87, blue: 0.50, alpha: 0.9)
+                    : UIColor(red: 0.69, green: 0.75, blue: 0.77, alpha: 0.9)
+                r.lineWidth = 3.5
+                r.lineDashPattern = [8, 6]
+                return r
+            }
             if let poly = overlay as? MKPolyline {
                 let r = MKPolylineRenderer(polyline: poly)
                 r.strokeColor = UIColor(Color.railBlue).withAlphaComponent(0.5)
@@ -752,6 +952,53 @@ struct RichTrainDetailSheet: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    headerSection
+                    speedRow
+                    speedSparklineSection
+                    etaBarSection
+                    detailsCardSection
+                    amtrakTimetableSection
+                    consistSection
+                    actionButtonsSection
+                }
+                .padding(.vertical)
+            }
+            .background(Color.bgPrimary)
+            .navigationTitle("Train Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }.foregroundColor(.railBlue)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showTimetable) { TimetableSheet(vm: vm, train: train) }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [shareText])
+        }
+        .alert("Save Location", isPresented: $showSaveDialog) {
+            TextField("Location name", text: $saveName)
+            Button("Save") { saveCurrentLocation() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Save this spot as a railfan location?")
+        }
+        .alert("Start Trip", isPresented: $showBoardingDialog) {
+            TextField("Boarding station (optional)", text: $boardingInput)
+            Button("Start") {
+                vm.startTrip(train: train, boardingStation: boardingInput)  // startTrip trims + nil-ifies internally
+                boardingInput = ""
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { boardingInput = "" }
+        } message: {
+            Text("Riding \(train.symbol)")
+        }
+    }
+
+    @ViewBuilder
+    private var headerSection: some View {
                     // Header
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -768,26 +1015,38 @@ struct RichTrainDetailSheet: View {
                             .frame(width: 14, height: 14)
                     }
                     .padding(.horizontal)
+    }
 
+    @ViewBuilder
+    private var speedRow: some View {
                     // Speed gauge + compass row
                     HStack(spacing: 12) {
                         SpeedGaugeView(speedMph: Int(train.speedMph))
                         CompassView(heading: Double(train.headingDegrees))
                     }
                     .padding(.horizontal)
+    }
 
+    @ViewBuilder
+    private var speedSparklineSection: some View {
                     // Speed sparkline (recent history)
                     if speeds.count >= 2 {
                         SpeedSparklineView(speeds: speeds, currentMph: Int(train.speedMph))
                             .padding(.horizontal)
                     }
+    }
 
+    @ViewBuilder
+    private var etaBarSection: some View {
                     // ETA approach bar (if available)
                     if let eta = train.etaMinutes {
                         ETABarView(etaMinutes: Int(truncating: eta), threshold: vm.approachEtaThreshold)
                             .padding(.horizontal)
                     }
+    }
 
+    @ViewBuilder
+    private var detailsCardSection: some View {
                     // Details card
                     VStack(spacing: 0) {
                         DetailRow(label: "Origin",      value: train.origin)
@@ -805,12 +1064,18 @@ struct RichTrainDetailSheet: View {
                     }
                     .cardStyle()
                     .padding(.horizontal)
+    }
 
+    @ViewBuilder
+    private var amtrakTimetableSection: some View {
                     // Amtrak timetable (only for Amtrak trains)
                     if isAmtrak {
                         AmtrakTimetableCard(symbol: train.symbol)
                     }
+    }
 
+    @ViewBuilder
+    private var consistSection: some View {
                     // Consist
                     if !train.consist.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -826,7 +1091,10 @@ struct RichTrainDetailSheet: View {
                         }
                         .padding(14).cardStyle().padding(.horizontal)
                     }
+    }
 
+    @ViewBuilder
+    private var actionButtonsSection: some View {
                     // ── Action buttons ────────────────────────────────────────
                     VStack(spacing: 10) {
 
@@ -925,41 +1193,6 @@ struct RichTrainDetailSheet: View {
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 32)
-                }
-                .padding(.vertical)
-            }
-            .background(Color.bgPrimary)
-            .navigationTitle("Train Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }.foregroundColor(.railBlue)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .sheet(isPresented: $showTimetable) { TimetableSheet(vm: vm, train: train) }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [shareText])
-        }
-        .alert("Save Location", isPresented: $showSaveDialog) {
-            TextField("Location name", text: $saveName)
-            Button("Save") { saveCurrentLocation() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Save this spot as a railfan location?")
-        }
-        .alert("Start Trip", isPresented: $showBoardingDialog) {
-            TextField("Boarding station (optional)", text: $boardingInput)
-            Button("Start") {
-                vm.startTrip(train: train, boardingStation: boardingInput.nilIfEmpty)
-                boardingInput = ""
-                dismiss()
-            }
-            Button("Cancel", role: .cancel) { boardingInput = "" }
-        } message: {
-            Text("Riding \(train.symbol)")
-        }
     }
 
     private func buildShareText() -> String {
@@ -1332,4 +1565,13 @@ struct StatCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10).background(Color.bgInput).cornerRadius(10)
     }
+}
+
+// ── Share sheet (wraps UIActivityViewController for SwiftUI) ──────────────────
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

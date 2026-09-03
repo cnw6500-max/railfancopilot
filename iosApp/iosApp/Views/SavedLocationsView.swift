@@ -231,9 +231,24 @@ struct AddLocationSheet: View {
     @State private var subdivision = ""
     @State private var frequency   = ""
     @State private var photoTips   = ""
+    @State private var autoFillNote: String? = nil
 
     private var hasGps: Bool {
         vm.userLocation != nil
+    }
+
+    /// Auto-fill subdivision from the nearest STB rail line to the GPS fix.
+    private func autoFillFromRailNetwork() async {
+        guard let loc = vm.userLocation else { return }
+        guard let info = await StbRailService.shared.lookupRailInfo(lat: loc.latitude, lon: loc.longitude) else { return }
+        await MainActor.run {
+            if subdivision.isEmpty {
+                if !info.subdivision.isEmpty, !info.ownerMark.isEmpty { subdivision = "\(info.ownerMark) \(info.subdivision) Sub" }
+                else if !info.subdivision.isEmpty { subdivision = "\(info.subdivision) Sub" }
+                else if !info.ownerName.isEmpty { subdivision = info.ownerName }
+            }
+            autoFillNote = "Nearest track: " + (info.ownerName.isEmpty ? info.ownerMark : info.ownerName) + " · \(Int(info.distanceM)) m"
+        }
     }
     private var coordLabel: String {
         guard let loc = vm.userLocation else { return "No GPS fix yet" }
@@ -269,6 +284,13 @@ struct AddLocationSheet: View {
                         LocationTextField(label: "Subdivision",
                             placeholder: "e.g. Transcon, Mains, Springfield",
                             text: $subdivision)
+                        if let note = autoFillNote {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles").foregroundColor(.railBlue).font(.system(size: 11))
+                                Text(note).font(.system(size: 11)).foregroundColor(.textMuted)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         LocationTextField(label: "Scanner frequency",
                             placeholder: "e.g. 161.100",
                             text: $frequency,
@@ -310,6 +332,7 @@ struct AddLocationSheet: View {
                 }
             }
         }
+        .task(id: vm.userLocation) { await autoFillFromRailNetwork() }
         .preferredColorScheme(.dark)
     }
 
