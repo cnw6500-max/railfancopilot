@@ -59,21 +59,19 @@ struct FirestoreSighting: Identifiable, Codable {
     // document — this decodes every field leniently instead.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        // @DocumentID is populated by Firestore's decoder via decoder.userInfo
-        // (keyed by documentRefUserInfoKey), not from a field named "id" in the
-        // document body (there isn't one). Reading it straight out of userInfo
-        // avoids DocumentID<String?>(from:)'s DocumentIDWrappable generic
-        // conformance, which this Firebase SDK version doesn't satisfy for an
-        // Optional<String> Value ("Type 'String?' does not conform to protocol").
-        // Getting this wrong (decoding "id" as a plain field, which isn't one
-        // that exists in the document body) left every sighting's `id` nil,
-        // which collapsed ForEach row identity so every card rendered the
-        // same (last) sighting.
-        if let ref = decoder.userInfo[CodingUserInfoKey.documentRefUserInfoKey] as? DocumentReference {
-            id = ref.documentID
-        } else {
-            id = try c.decodeIfPresent(String.self, forKey: .id)
-        }
+        // @DocumentID would normally be populated by Firestore's decoder via
+        // decoder.userInfo, but that key (documentRefUserInfoKey) turned out to
+        // be `internal` in this Firebase SDK version, and DocumentID<String?>
+        // (from:) fails a DocumentIDWrappable conformance check on top of that
+        // — both routes are effectively version-locked, non-public API. There
+        // is no field named "id" in the document body either, so this decodes
+        // to nil here; callers (see startListening below) set the real id from
+        // the public, version-stable `document.documentID` after decoding.
+        // Leaving `id` nil at this point is fine as long as every call site
+        // fills it in — forgetting to is exactly what caused every sighting
+        // card to collapse onto the last-decoded sighting (ForEach keys rows
+        // by `id`; every row sharing nil collapses to one identity).
+        id = try c.decodeIfPresent(String.self, forKey: .id)
         railroad = try c.decodeIfPresent(String.self, forKey: .railroad) ?? "Unknown"
         trainSymbol = try c.decodeIfPresent(String.self, forKey: .trainSymbol) ?? ""
         location = try c.decodeIfPresent(String.self, forKey: .location) ?? "Unknown location"
@@ -226,6 +224,7 @@ class FirestoreManager: ObservableObject {
                 var results: [FirestoreSighting] = []
                 for doc in documents {
                     if var s = try? doc.data(as: FirestoreSighting.self) {
+                        s.id = doc.documentID   // public API — see the decoder comment above
                         s.distanceMiles = FirestoreManager.haversineMiles(
                             lat1: lat, lon1: lon, lat2: s.latitude, lon2: s.longitude)
                         if s.distanceMiles <= radiusMiles { results.append(s) }
