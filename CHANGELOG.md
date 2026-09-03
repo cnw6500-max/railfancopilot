@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.7.2 (iOS build 4) — unreleased
+## 2.7.3 (iOS build 6) — unreleased
 ### STB Railroad Map Depot integration (Android + iOS)
 - **Rail Lines overlay now uses the Surface Transportation Board / NTAD North American Rail Network** (`services3.arcgis.com/6rJKAjBRDRSfjCzV`) as the primary source, with OpenStreetMap/Overpass as a fallback. Lines are colored by owning railroad (AAR reporting mark → display name), double-track drawn heavier, and tapping a line shows owner · subdivision · yard · track count.
 - **Auto-fill railroad & subdivision** on new Community Spots and Saved Locations from the nearest STB rail segment (≤ 800 m), with a "Nearest track: …" hint under the fields.
