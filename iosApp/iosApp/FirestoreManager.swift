@@ -59,13 +59,21 @@ struct FirestoreSighting: Identifiable, Codable {
     // document — this decodes every field leniently instead.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        // @DocumentID is populated by Firestore's decoder via decoder.userInfo,
-        // not from a field named "id" in the document body (there isn't one) —
-        // decoding it through DocumentID(from:) directly, rather than as a plain
-        // String field, is what makes this actually pick up the real doc ID.
-        // Getting this wrong left every sighting's `id` nil, which collapsed
-        // ForEach row identity so every card rendered the same (last) sighting.
-        _id = try DocumentID<String?>(from: decoder)
+        // @DocumentID is populated by Firestore's decoder via decoder.userInfo
+        // (keyed by documentRefUserInfoKey), not from a field named "id" in the
+        // document body (there isn't one). Reading it straight out of userInfo
+        // avoids DocumentID<String?>(from:)'s DocumentIDWrappable generic
+        // conformance, which this Firebase SDK version doesn't satisfy for an
+        // Optional<String> Value ("Type 'String?' does not conform to protocol").
+        // Getting this wrong (decoding "id" as a plain field, which isn't one
+        // that exists in the document body) left every sighting's `id` nil,
+        // which collapsed ForEach row identity so every card rendered the
+        // same (last) sighting.
+        if let ref = decoder.userInfo[CodingUserInfoKey.documentRefUserInfoKey] as? DocumentReference {
+            id = ref.documentID
+        } else {
+            id = try c.decodeIfPresent(String.self, forKey: .id)
+        }
         railroad = try c.decodeIfPresent(String.self, forKey: .railroad) ?? "Unknown"
         trainSymbol = try c.decodeIfPresent(String.self, forKey: .trainSymbol) ?? ""
         location = try c.decodeIfPresent(String.self, forKey: .location) ?? "Unknown location"
