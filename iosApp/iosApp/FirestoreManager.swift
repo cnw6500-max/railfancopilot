@@ -59,7 +59,13 @@ struct FirestoreSighting: Identifiable, Codable {
     // document — this decodes every field leniently instead.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decodeIfPresent(String.self, forKey: .id)
+        // @DocumentID is populated by Firestore's decoder via decoder.userInfo,
+        // not from a field named "id" in the document body (there isn't one) —
+        // decoding it through DocumentID(from:) directly, rather than as a plain
+        // String field, is what makes this actually pick up the real doc ID.
+        // Getting this wrong left every sighting's `id` nil, which collapsed
+        // ForEach row identity so every card rendered the same (last) sighting.
+        _id = try DocumentID<String?>(from: decoder)
         railroad = try c.decodeIfPresent(String.self, forKey: .railroad) ?? "Unknown"
         trainSymbol = try c.decodeIfPresent(String.self, forKey: .trainSymbol) ?? ""
         location = try c.decodeIfPresent(String.self, forKey: .location) ?? "Unknown location"
