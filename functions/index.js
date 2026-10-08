@@ -106,6 +106,7 @@ exports.identifyLocomotive = functions.runWith({ secrets: ['ANTHROPIC_KEY'] }).h
 **Type:** [one of: Industrial Switcher / Yard Switcher / Road Switcher / Road Locomotive / Narrow Gauge / Other]
 **Era:** [approximate decade(s) built, e.g. 1950s–1960s]
 **Details:** [2–3 sentences on paint scheme, body style, notable features, and operator type — e.g. private industrial, shortline, Class I railroad]
+**Special Status:** [exactly one of: Heritage / Commemorative / Standard. Use Heritage or Commemorative ONLY for a unit wearing a heritage, fallen-flag, tribute, or commemorative livery that differs from its owner's normal paint. A locomotive in its owner's regular scheme is Standard, however old or uncommon the model.]
 
 If the image does not show a locomotive clearly, respond only with: "No locomotive clearly visible in this photo."
 Read all visible text, logos, and signage in the image carefully before answering — the owner name is often painted directly on the unit. Do not default to Class I railroad names if the markings show otherwise.`,

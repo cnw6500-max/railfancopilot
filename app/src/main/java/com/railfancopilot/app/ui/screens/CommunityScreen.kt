@@ -496,11 +496,10 @@ fun ReportCard(
         }
 
         // Heritage unit hint — shown when the sighting text matches a known heritage road number
-        val heritageMatch = remember(report.text, report.trainSymbol) {
-            val combined = "${report.text} ${report.trainSymbol ?: ""}".uppercase()
-            com.railfancopilot.app.data.models.HERITAGE_UNITS.firstOrNull { unit ->
-                Regex("\\b${unit.roadNumber}\\b").containsMatchIn(combined)
-            }
+        val heritageMatch = remember(report.text, report.railroad, report.locationName) {
+            // Location is excluded — street numbers and mileposts aren't road numbers
+            val notes = if (report.locationName.isNotBlank()) report.text.replace(report.locationName, " ") else report.text
+            com.railfancopilot.app.data.models.findHeritageUnitInSighting(report.railroad, notes)
         }
         heritageMatch?.let { unit ->
             Spacer(Modifier.height(6.dp))

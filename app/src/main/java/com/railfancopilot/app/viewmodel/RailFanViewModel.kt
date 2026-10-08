@@ -1204,8 +1204,11 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         }
         if (!_alertRareLoco.value && !_alertHotTrain.value) return
         val newReports = reports.filter { it.id !in seenReportIds }
+        val myUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
         newReports.forEach { report ->
             seenReportIds.add(report.id)
+            // Don't alert the user about a sighting they just logged themselves
+            if (myUid != null && report.reporterUid == myUid) return@forEach
             val symbol = report.trainSymbol?.uppercase() ?: ""
             val text   = report.text.lowercase()
 
@@ -1233,13 +1236,16 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
             }
 
             if (_alertRareLoco.value) {
-                val heritageKw = listOf("heritage", "fallen flag", "spirit of", "rebuild",
-                    "foreign power", "patched", "warbonnet", "commemorative", "daylight",
-                    "retro", "historic paint", "special paint", "cn power", "cp power",
-                    "ferromex", "via rail", "mexican power", "foreign unit")
-                val foreignRR  = setOf("CN", "CP", "CPKC", "FERROMEX", "VIA", "KCS DE MEXICO")
+                // CN / CP / CPKC are everyday Class I power across much of the US, so the
+                // railroad alone doesn't make a sighting rare.
+                val heritageKw = listOf("heritage unit", "heritage paint", "heritage scheme",
+                    "heritage livery", "fallen flag", "foreign power", "warbonnet",
+                    "commemorative", "historic paint", "special paint",
+                    "ferromex", "mexican power", "foreign unit")
+                val foreignRR  = setOf("FERROMEX", "FXE", "KCS DE MEXICO", "KCSM")
                 val isRare = heritageKw.any { text.contains(it) } ||
-                             report.railroad?.uppercase() in foreignRR
+                             report.railroad?.uppercase()?.trim() in foreignRR ||
+                             com.railfancopilot.app.data.models.findHeritageUnitInSighting(report.railroad, text) != null
                 if (isRare) {
                     fireRailAlert(RailAlert(
                         id          = "rare_${report.id}",
@@ -1897,19 +1903,17 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         if (hour >= 21 || hour < 5) unlockAchievement("a2")
 
-        // Heritage Spotter: Claude mentions heritage paint keywords
-        val heritageKeywords = listOf("heritage", "retro", "patched", "spirit of", "fallen flag",
-            "commemorative", "historic", "paint scheme", "special livery")
-        if (heritageKeywords.any { lower.contains(it) }) unlockAchievement("a1")
+        val status = com.railfancopilot.app.data.models.classifyLocoIdResult(result)
+
+        // Heritage Spotter: Claude identifies a heritage / commemorative unit
+        if (status == com.railfancopilot.app.data.models.LocoIdStatus.HERITAGE) unlockAchievement("a1")
 
         // Double Stack: Claude mentions intermodal / container keywords
         val dsKeywords = listOf("double stack", "intermodal", "container", "cofc", "stack train", "well car")
         if (dsKeywords.any { lower.contains(it) }) unlockAchievement("a4")
 
         // Foreign Power: Claude identifies a foreign-railroad or rare visitor unit
-        val foreignKeywords = listOf("ferromex", "via rail", "foreign power", "foreign unit",
-            "mexican power", "canadian national power", "canadian pacific power", "kcs de mexico")
-        if (foreignKeywords.any { lower.contains(it) }) unlockAchievement("a12")
+        if (status == com.railfancopilot.app.data.models.LocoIdStatus.FOREIGN) unlockAchievement("a12")
     }
 
     // ── Approach notifications ────────────────────────────────────────────────

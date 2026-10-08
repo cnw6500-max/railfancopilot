@@ -597,7 +597,17 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         let lower = result.lowercased()
         let hour = Calendar.current.component(.hour, from: Date())
         if hour >= 21 || hour < 5 { unlockAchievement(id: "a2") }
-        if lower.contains("heritage") || lower.contains("historic") || lower.contains("excursion") {
+        // Prefer the backend's explicit "Special Status" line; a bare "heritage"/"historic"
+        // mention appears in nearly every ID ("not a heritage unit", "historic model").
+        let isHeritage: Bool
+        if let range = lower.range(of: "**special status:**") {
+            let status = lower[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            isHeritage = status.hasPrefix("heritage") || status.hasPrefix("commemorative")
+        } else {
+            isHeritage = ["heritage unit", "heritage livery", "heritage paint", "heritage scheme", "commemorative"]
+                .contains { lower.contains($0) } && !lower.contains("not a heritage")
+        }
+        if isHeritage {
             unlockAchievement(id: "a1")
         }
         if lower.contains("intermodal") || lower.contains("double stack") || lower.contains("container") {

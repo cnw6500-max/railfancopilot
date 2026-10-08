@@ -468,15 +468,9 @@ fun PhotoScreen(vm: RailFanViewModel, onUpgrade: () -> Unit = {}) {
     // ── Loco Identifier result ────────────────────────────────────────────────
     val locoResultText = locoIdResult ?: locoIdError
     if (locoResultText != null && !isIdentifying) {
-        val resultLower = locoIdResult?.lowercase() ?: ""
-        val isHeritage = locoIdResult != null && listOf(
-            "heritage", "retro", "patched", "spirit of", "fallen flag",
-            "commemorative", "historic", "paint scheme", "special livery"
-        ).any { resultLower.contains(it) }
-        val isForeign = locoIdResult != null && listOf(
-            "ferromex", "via rail", "foreign power", "foreign unit",
-            "mexican power", "canadian national power", "canadian pacific power", "kcs de mexico"
-        ).any { resultLower.contains(it) }
+        val locoStatus = locoIdResult?.let { classifyLocoIdResult(it) } ?: LocoIdStatus.STANDARD
+        val isHeritage = locoStatus == LocoIdStatus.HERITAGE
+        val isForeign  = locoStatus == LocoIdStatus.FOREIGN
 
         AlertDialog(
             onDismissRequest = { vm.clearLocoIdResult() },

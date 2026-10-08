@@ -75,3 +75,67 @@ val HERITAGE_ROAD_NUMBERS: Set<String> = HERITAGE_UNITS.map { it.roadNumber.uppe
 /** Look up a heritage unit by road number (case-insensitive) */
 fun findHeritageUnit(roadNumber: String): HeritageUnit? =
     HERITAGE_UNITS.find { it.roadNumber.equals(roadNumber.trim(), ignoreCase = true) }
+
+// Free-text railroad names users type for each HeritageUnit.railroad code
+private val HERITAGE_RR_ALIASES: Map<String, List<String>> = mapOf(
+    "UP"     to listOf("UP", "UNION PACIFIC"),
+    "BNSF"   to listOf("BNSF"),
+    "NS"     to listOf("NS", "NORFOLK SOUTHERN"),
+    "CSX"    to listOf("CSX", "CSXT"),
+    "CPKC"   to listOf("CPKC", "CP", "KCS", "CANADIAN PACIFIC", "KANSAS CITY SOUTHERN"),
+    "CN"     to listOf("CN", "CANADIAN NATIONAL"),
+    "AMTRAK" to listOf("AMTRAK", "AMTK"),
+)
+
+/**
+ * Finds a heritage unit mentioned in a sighting. The road number alone is not enough —
+ * "100" or "3" turns up in addresses, mileposts and ordinary units — so the sighting's
+ * railroad must also match the unit's owner.
+ */
+fun findHeritageUnitInSighting(railroad: String?, text: String): HeritageUnit? {
+    val rr = railroad?.uppercase()?.trim().orEmpty()
+    if (rr.isBlank() || rr == "UNKNOWN") return null
+    val upper = text.uppercase()
+    return HERITAGE_UNITS.firstOrNull { unit ->
+        val aliases = HERITAGE_RR_ALIASES[unit.railroad] ?: listOf(unit.railroad)
+        aliases.any { Regex("\\b${Regex.escape(it)}\\b").containsMatchIn(rr) } &&
+            Regex("\\b${Regex.escape(unit.roadNumber)}\\b").containsMatchIn(upper)
+    }
+}
+
+// ── AI locomotive ID classification ──────────────────────────────────────────
+
+enum class LocoIdStatus { STANDARD, HERITAGE, FOREIGN }
+
+private val LOCO_ID_HERITAGE_KW = listOf(
+    "heritage unit", "heritage livery", "heritage paint", "heritage scheme", "heritage locomotive",
+    "fallen flag", "commemorative", "special livery", "tribute unit"
+)
+private val LOCO_ID_FOREIGN_KW = listOf(
+    "ferromex", "via rail", "foreign power", "foreign unit", "mexican power", "kcs de mexico"
+)
+private val LOCO_ID_NEGATIONS = listOf(
+    "not a ", "not an ", "not in ", "no heritage", "no special", "no commemorative",
+    "non-heritage", "isn't", "is not", "rather than", "standard"
+)
+
+/**
+ * Classifies the identifyLocomotive response. Uses the explicit "Special Status" line when
+ * the backend provides one; otherwise falls back to keywords, ignoring sentences that only
+ * mention heritage to rule it out ("standard paint scheme, not a heritage unit").
+ */
+fun classifyLocoIdResult(result: String): LocoIdStatus {
+    val statusLine = Regex("""\*\*Special Status:\*\*\s*(.+)""", RegexOption.IGNORE_CASE)
+        .find(result)?.groupValues?.get(1)?.trim()?.lowercase()
+    val sentences = result.lowercase().split(Regex("[.!?\\n]+"))
+        .filter { s -> LOCO_ID_NEGATIONS.none { s.contains(it) } }
+    val isHeritage = if (statusLine != null)
+        statusLine.startsWith("heritage") || statusLine.startsWith("commemorative")
+    else
+        sentences.any { s -> LOCO_ID_HERITAGE_KW.any { s.contains(it) } }
+    return when {
+        isHeritage -> LocoIdStatus.HERITAGE
+        sentences.any { s -> LOCO_ID_FOREIGN_KW.any { s.contains(it) } } -> LocoIdStatus.FOREIGN
+        else -> LocoIdStatus.STANDARD
+    }
+}
