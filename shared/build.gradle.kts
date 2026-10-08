@@ -40,10 +40,11 @@ kotlin {
         homepage = "https://railfancopilot.app"
         ios.deploymentTarget = "16.0"
 
-        pod("FirebaseCore")
-        pod("FirebaseFirestore")
-        pod("FirebaseAuth")
-        pod("FirebaseStorage")
+        // The Firebase pods are clang modules; cinterop needs -fmodules to import them.
+        pod("FirebaseCore") { extraOpts += listOf("-compiler-option", "-fmodules") }
+        pod("FirebaseFirestore") { extraOpts += listOf("-compiler-option", "-fmodules") }
+        pod("FirebaseAuth") { extraOpts += listOf("-compiler-option", "-fmodules") }
+        pod("FirebaseStorage") { extraOpts += listOf("-compiler-option", "-fmodules") }
     }
 
     sourceSets {
