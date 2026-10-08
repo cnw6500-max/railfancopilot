@@ -40,12 +40,10 @@ kotlin {
         homepage = "https://railfancopilot.app"
         ios.deploymentTarget = "16.0"
 
-        // linkOnly: GitLive already ships the Kotlin bindings for these pods, so generating
-        // our own cinterop duplicates every symbol at link time. We only need them linked.
-        pod("FirebaseCore") { linkOnly = true }
-        pod("FirebaseFirestore") { linkOnly = true }
-        pod("FirebaseAuth") { linkOnly = true }
-        pod("FirebaseStorage") { linkOnly = true }
+        pod("FirebaseCore")
+        pod("FirebaseFirestore")
+        pod("FirebaseAuth")
+        pod("FirebaseStorage")
     }
 
     sourceSets {
