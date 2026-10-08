@@ -40,11 +40,12 @@ kotlin {
         homepage = "https://railfancopilot.app"
         ios.deploymentTarget = "16.0"
 
-        // The Firebase pods are clang modules; cinterop needs -fmodules to import them.
-        pod("FirebaseCore") { extraOpts += listOf("-compiler-option", "-fmodules") }
-        pod("FirebaseFirestore") { extraOpts += listOf("-compiler-option", "-fmodules") }
-        pod("FirebaseAuth") { extraOpts += listOf("-compiler-option", "-fmodules") }
-        pod("FirebaseStorage") { extraOpts += listOf("-compiler-option", "-fmodules") }
+        // linkOnly: GitLive already ships the Kotlin bindings for these pods, so generating
+        // our own cinterop duplicates every symbol at link time. We only need them linked.
+        pod("FirebaseCore") { linkOnly = true }
+        pod("FirebaseFirestore") { linkOnly = true }
+        pod("FirebaseAuth") { linkOnly = true }
+        pod("FirebaseStorage") { linkOnly = true }
     }
 
     sourceSets {
