@@ -671,7 +671,7 @@ fun AbandonedLineSheet(line: AbandonedRailLine, onDismiss: () -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = RailBlueDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("STB docket records", fontSize = 13.sp)
                 }
