@@ -24,9 +24,9 @@ targets:
     sources:
       - path: iosApp
     dependencies:
+      # Static framework: linked into the app binary, so it must not be embedded
       - framework: ../shared/build/XCFrameworks/release/shared.xcframework
-        embed: true
-        codeSign: true
+        embed: false
       - package: Firebase
         product: FirebaseFirestore
       - package: Firebase
