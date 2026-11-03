@@ -283,6 +283,7 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         decodeHistory = PersistenceManager.shared.loadDecodeHistory()
         achievements  = PersistenceManager.shared.loadAchievements()
         taggedPhotos  = PersistenceManager.shared.loadTaggedPhotos()
+        recheckHeritageBadge()
     }
 
     private func saveBool(_ v: Bool, _ key: String) { UserDefaults.standard.set(v, forKey: key) }
@@ -593,21 +594,38 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func consumeNewAchievement() { newAchievement = nil }
 
+    // Prefer the backend's explicit "Special Status" line; a bare "heritage"/"historic"
+    // mention appears in nearly every ID ("not a heritage unit", "historic model").
+    private static func isHeritageLocoID(_ result: String) -> Bool {
+        let lower = result.lowercased()
+        if let range = lower.range(of: "**special status:**") {
+            let status = lower[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            return status.hasPrefix("heritage") || status.hasPrefix("commemorative")
+        }
+        return ["heritage unit", "heritage livery", "heritage paint", "heritage scheme", "commemorative"]
+            .contains { lower.contains($0) } && !lower.contains("not a heritage")
+    }
+
+    // One-time: before build 7, Heritage Spotter (a1) unlocked on loose keyword matches.
+    // Keep it only if a saved loco ID still qualifies under the new rules.
+    private func recheckHeritageBadge() {
+        let key = "locoBadgeRecheckV1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        if let idx = achievements.firstIndex(where: { $0.id == "a1" }),
+           achievements[idx].earned,
+           !locoIDHistory.contains(where: { Self.isHeritageLocoID($0.resultText) }) {
+            achievements[idx].earned = false
+            achievements[idx].earnedDate = nil
+            PersistenceManager.shared.saveAchievements(achievements)
+        }
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
     private func checkAchievementsForLocoID(result: String) {
         let lower = result.lowercased()
         let hour = Calendar.current.component(.hour, from: Date())
         if hour >= 21 || hour < 5 { unlockAchievement(id: "a2") }
-        // Prefer the backend's explicit "Special Status" line; a bare "heritage"/"historic"
-        // mention appears in nearly every ID ("not a heritage unit", "historic model").
-        let isHeritage: Bool
-        if let range = lower.range(of: "**special status:**") {
-            let status = lower[range.upperBound...].trimmingCharacters(in: .whitespaces)
-            isHeritage = status.hasPrefix("heritage") || status.hasPrefix("commemorative")
-        } else {
-            isHeritage = ["heritage unit", "heritage livery", "heritage paint", "heritage scheme", "commemorative"]
-                .contains { lower.contains($0) } && !lower.contains("not a heritage")
-        }
-        if isHeritage {
+        if Self.isHeritageLocoID(result) {
             unlockAchievement(id: "a1")
         }
         if lower.contains("intermodal") || lower.contains("double stack") || lower.contains("container") {

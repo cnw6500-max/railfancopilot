@@ -8,8 +8,9 @@
 - iOS: "Rail Lines" and "Abandoned" chips added to the map (iOS previously had no rail-line overlay); `StbRailService.swift` mirrors Android's `StbRailFetcher.kt`.
 - New Android models: `RailInfo`, `AbandonedRailLine`; `RailwaySegment` gains `ownerMark`, `subdivision`, `division`, `tracks`, `yardName`, `passenger`.
 
-### Rare / heritage false positives (Android 2.7.5, versionCode 51)
+### Rare / heritage false positives (Android 2.7.5, versionCode 52; iOS build 8)
 - Fixed nearly every locomotive being flagged as heritage or rare: photo ID now reads an explicit Special Status line from `identifyLocomotive`, Rare Locomotive alerts no longer treat CN/CP/CPKC/VIA as foreign power or fire on your own sightings, and the community heritage tag requires the railroad to match.
+- One-time badge re-check on first launch: Heritage Spotter (and Foreign Power on Android) stay earned only if a saved locomotive ID still qualifies under the new rules.
 
 ### Also in 2.7.2
 - iOS Android-parity merge: Trip Log, Station Board, Log Transmission, yard detail sheet, Photo Enhancer, tagged photos, Community Spots, rebuilt Webcams, native MKMapView, voice dictation, per-agency settings, local persistence.

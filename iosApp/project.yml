@@ -41,7 +41,7 @@ targets:
         CFBundleName: Railfan Copilot
         CFBundleDisplayName: Railfan Copilot
         CFBundleShortVersionString: "2.7.3"
-        CFBundleVersion: "7"
+        CFBundleVersion: "8"
         LSRequiresIPhoneOS: true
         UIRequiresFullScreen: true
         UIStatusBarStyle: UIStatusBarStyleLightContent

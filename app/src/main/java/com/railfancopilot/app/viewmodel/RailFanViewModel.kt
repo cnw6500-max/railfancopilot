@@ -95,6 +95,7 @@ private val PREF_CLOUD_WRITE_CACHE = stringPreferencesKey("cloud_write_cache")
 private val EARNED_IDS_KEY = stringSetPreferencesKey("earned_ids")
 private val VISITED_YARDS_KEY = stringSetPreferencesKey("visited_yards")
 private fun tsKey(id: String) = longPreferencesKey("ts_$id")
+private val LOCO_BADGE_RECHECK_KEY = booleanPreferencesKey("loco_badge_recheck_v1")
 
 data class GeoSearchResult(val displayName: String, val lat: Double, val lon: Double)
 
@@ -1868,6 +1869,7 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
 
     private fun loadAchievements() {
         viewModelScope.launch {
+            recheckLocoIdBadges()
             val prefs = dataStore.data.first()
             val earnedIds = prefs[EARNED_IDS_KEY] ?: emptySet()
             _achievements.value = BASE_ACHIEVEMENTS.map { a ->
@@ -1876,6 +1878,24 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
                     a.copy(earned = true, earnedMs = ts)
                 } else a
             }
+        }
+    }
+
+    // One-time: before 2.7.5, Heritage Spotter (a1) and Foreign Power (a12) unlocked on loose
+    // keyword matches. Keep each only if a saved loco ID still qualifies under the new rules.
+    private suspend fun recheckLocoIdBadges() {
+        if (dataStore.data.first()[LOCO_BADGE_RECHECK_KEY] == true) return
+        val statuses = repo.getLocoIdHistoryFlow().first()
+            .map { classifyLocoIdResult(it.resultText) }
+            .toSet()
+        val revoke = buildSet {
+            if (LocoIdStatus.HERITAGE !in statuses) add("a1")
+            if (LocoIdStatus.FOREIGN !in statuses) add("a12")
+        }
+        dataStore.edit { prefs ->
+            prefs[EARNED_IDS_KEY] = (prefs[EARNED_IDS_KEY] ?: emptySet()) - revoke
+            revoke.forEach { prefs.remove(tsKey(it)) }
+            prefs[LOCO_BADGE_RECHECK_KEY] = true
         }
     }
 
