@@ -53,6 +53,8 @@ App: `com.railfancopilot.app` · versionCode 45 · targetSdk 36
 
 ## 3. Location declarations
 
+> **Update (Nov 3, 2026):** Option B is implemented in Android 2.7.6 (versionCode 53): saved spots are real geofences, `LocationTrackingService` and `FOREGROUND_SERVICE_LOCATION` are gone, and the disclosure text matches. Use **Draft B** below for the background declaration. Its feature text now reads: when the user arrives at a saved spot, the app checks for trains within 25 miles and notifies them.
+
 ### ⚠️ Fix first: the background location claim doesn't match the code
 
 The background disclosure in `MainActivity.kt` (`BackgroundLocationDisclosureDialog`) tells users:

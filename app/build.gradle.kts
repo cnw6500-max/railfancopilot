@@ -22,8 +22,8 @@ android {
         applicationId = "com.railfancopilot.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 52
-        versionName = "2.7.5"
+        versionCode = 53
+        versionName = "2.7.6"
 
         val mapsKey = localProps.getProperty("MAPS_API_KEY") ?: ""
         manifestPlaceholders["MAPS_API_KEY"] = mapsKey
@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.play.billing.ktx)
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
+    implementation(libs.work.runtime.ktx)
     // Firebase — Firestore (shared community feed with iOS) + Functions (API proxy)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)

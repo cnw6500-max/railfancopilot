@@ -39,7 +39,8 @@ import java.util.Collections
 import java.util.UUID
 
 private val Context.achievementDataStore: DataStore<Preferences> by preferencesDataStore(name = "achievements")
-private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+// Internal so SpotArrivalWorker can read feed toggles; a second delegate for "settings" would crash
+internal val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 // ── Settings preference keys ──────────────────────────────────────────────────
 private val PREF_REFRESH_INTERVAL_SEC = intPreferencesKey("refresh_interval_sec")       // default 30
@@ -1438,6 +1439,13 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { repo.deleteLocation(location) }
     }
 
+    // Called once "Allow all the time" is granted; geofences can't be registered before that
+    fun syncSpotGeofences() {
+        viewModelScope.launch {
+            com.railfancopilot.app.data.service.SpotGeofences.sync(getApplication(), repo.getSavedLocationsFlow().first())
+        }
+    }
+
     // ── Timetable ─────────────────────────────────────────────────────────────
 
     private val _timetable        = MutableStateFlow<List<TimetableStop>>(emptyList())
@@ -2453,6 +2461,12 @@ class RailFanViewModel(application: Application) : AndroidViewModel(application)
         startSunRefreshLoop()
         initAuth()
         viewModelScope.launch { communityReports.collect { checkCommunityReportsForAlerts(it) } }
+        // Keep one geofence per saved spot so arrival alerts work with the app closed
+        viewModelScope.launch {
+            repo.getSavedLocationsFlow().collect {
+                com.railfancopilot.app.data.service.SpotGeofences.sync(getApplication(), it)
+            }
+        }
         pruneStaleTrailWaypoints()
         loadPersistedTrailsFromRoom()
         viewModelScope.launch(Dispatchers.IO) {

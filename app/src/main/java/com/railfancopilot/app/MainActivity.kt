@@ -228,6 +228,11 @@ fun RailFanApp() {
         }
     }
 
+    // Saved-spot geofences need fine + background location; register them as soon as both are granted
+    LaunchedEffect(hasLocationPermission, bgLocationPermission?.status?.isGranted) {
+        if (hasLocationPermission) vm.syncSpotGeofences()
+    }
+
     if (showBgLocationDisclosure) {
         BackgroundLocationDisclosureDialog(
             onContinue = {
@@ -368,8 +373,9 @@ fun BackgroundLocationDisclosureDialog(
         },
         text = {
             Text(
-                "RailFan Copilot uses your location in the background to send you proximity alerts " +
-                "when trains approach your saved locations — even when the app is closed or not in use.\n\n" +
+                "RailFan Copilot uses your location in the background to notify you about nearby trains " +
+                "when you arrive at one of your saved spots — even when the app is closed or not in use. " +
+                "Android watches only for arrival at your saved spots; the app does not record where you go.\n\n" +
                 "On the next screen, select \"Allow all the time\" to enable this feature. " +
                 "You can change this at any time in your device Settings.",
                 fontSize = 14.sp,

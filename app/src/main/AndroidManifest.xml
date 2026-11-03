@@ -20,10 +20,12 @@
     <!-- Google Play Billing -->
     <uses-permission android:name="com.android.vending.BILLING" />
 
-    <!-- Foreground service (scanner, location tracking) -->
+    <!-- Foreground service (scanner) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- Re-register saved-spot geofences after reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
@@ -77,10 +79,18 @@
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
 
-        <service
-            android:name="com.railfancopilot.app.data.service.LocationTrackingService"
-            android:foregroundServiceType="location"
+        <!-- Saved-spot geofences: arrival events from Play services, and re-registration after reboot/update -->
+        <receiver
+            android:name="com.railfancopilot.app.data.service.SpotGeofenceReceiver"
             android:exported="false" />
+        <receiver
+            android:name="com.railfancopilot.app.data.service.SpotGeofenceBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Home screen widget receiver -->
         <receiver

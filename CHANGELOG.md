@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.6 (Android, versionCode 53) — unreleased
+### Saved-spot arrival alerts
+- Each saved location is registered as an Android geofence (300 m, up to 100). Arriving at a spot, even with the app closed, runs a WorkManager job that fetches trains within 25 miles from the enabled feeds and notifies "You're at {spot}" with the nearest train. Geofences are re-registered on reboot and app update.
+- Removed the unused `LocationTrackingService` and the `FOREGROUND_SERVICE_LOCATION` permission; the background location disclosure now describes what the app actually does.
+
 ## 2.7.3 (iOS build 6) — unreleased
 ### STB Railroad Map Depot integration (Android + iOS)
 - **Rail Lines overlay now uses the Surface Transportation Board / NTAD North American Rail Network** (`services3.arcgis.com/6rJKAjBRDRSfjCzV`) as the primary source, with OpenStreetMap/Overpass as a fallback. Lines are colored by owning railroad (AAR reporting mark → display name), double-track drawn heavier, and tapping a line shows owner · subdivision · yard · track count.
