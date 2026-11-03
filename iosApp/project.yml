@@ -13,7 +13,9 @@ settings:
 packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    from: 11.0.0
+    # 12.19.3+ removes the compromised eMudhra roots from Firestore's
+    # embedded TLS trust store (Firebase security notice, Oct 2026).
+    from: 12.19.3
 
 targets:
   iosApp:
@@ -39,7 +41,7 @@ targets:
         CFBundleName: Railfan Copilot
         CFBundleDisplayName: Railfan Copilot
         CFBundleShortVersionString: "2.7.3"
-        CFBundleVersion: "6"
+        CFBundleVersion: "7"
         LSRequiresIPhoneOS: true
         UIRequiresFullScreen: true
         UIStatusBarStyle: UIStatusBarStyleLightContent
