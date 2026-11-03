@@ -40,8 +40,8 @@ targets:
       properties:
         CFBundleName: Railfan Copilot
         CFBundleDisplayName: Railfan Copilot
-        CFBundleShortVersionString: "2.7.3"
-        CFBundleVersion: "8"
+        CFBundleShortVersionString: "2.7.6"   # kept in sync with Android versionName
+        CFBundleVersion: "53"                 # kept in sync with Android versionCode
         LSRequiresIPhoneOS: true
         UIRequiresFullScreen: true
         UIStatusBarStyle: UIStatusBarStyleLightContent
@@ -58,7 +58,7 @@ targets:
           - location
           - remote-notification
         NSLocationWhenInUseUsageDescription: "Railfan Copilot uses your location to show nearby trains on the map and sort scanner feeds by distance. Location data is not stored or shared."
-        NSLocationAlwaysAndWhenInUseUsageDescription: "Railfan Copilot uses your location in the background to send proximity alerts when trains approach your saved locations."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Railfan Copilot uses your location in the background to tell you about nearby trains when you arrive at one of your saved spots. It watches only for arrival at your spots and does not record where you go."
         NSCameraUsageDescription: "Railfan Copilot uses the camera to take photos for the AI locomotive identifier."
         NSPhotoLibraryUsageDescription: "Railfan Copilot accesses your photo library to select images for the AI locomotive identifier."
         NSPhotoLibraryAddUsageDescription: "Railfan Copilot saves locomotive photos to your library."

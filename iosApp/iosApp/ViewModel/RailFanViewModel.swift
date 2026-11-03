@@ -324,9 +324,60 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         Task { @MainActor in
             guard approachNotificationsEnabled, isPremium else { return }
             if let loc = savedLocations.first(where: { $0.id == region.identifier }) {
-                NotificationManager.shared.sendProximityNotification(locationName: loc.name)
+                checkTrainsOnArrival(at: loc)
             }
         }
+    }
+
+    // On arrival at a saved spot, fetch trains around the spot and report the nearest one
+    // within 25 miles (same rule as Android's SpotArrivalWorker). Silent if none or on error.
+    // Region entry may relaunch the app in the background, so hold a background task open.
+    private func checkTrainsOnArrival(at spot: SavedLocationShared) {
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        bgTask = UIApplication.shared.beginBackgroundTask(withName: "spot-arrival") {
+            UIApplication.shared.endBackgroundTask(bgTask)
+            bgTask = .invalid
+        }
+        let finish = {
+            if bgTask != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        helper.getSelectedTrains(
+            lat: spot.latitude, lon: spot.longitude,
+            includeAmtrak: showAmtrak,
+            includeMbta: showMBTA,
+            includeSepta: showSEPTA,
+            includeMetra: showMetra,
+            includeLirr: showLIRR,
+            includeMetroNorth: showMetroNorth,
+            includeCaltrain: showCaltrain,
+            includeSoundTransit: showSoundTransit,
+            onSuccess: { trains in
+                Task { @MainActor in
+                    let spotCL = CLLocation(latitude: spot.latitude, longitude: spot.longitude)
+                    let nearby = (trains as? [TrainLocation] ?? [])
+                        .map { ($0, spotCL.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) / 1609.34) }
+                        .filter { $0.1 <= 25 }
+                        .sorted { $0.1 < $1.1 }
+                    if let nearest = nearby.first {
+                        let (train, miles) = nearest
+                        NotificationManager.shared.sendSpotArrivalNotification(
+                            locationName: spot.name,
+                            trainSymbol: train.symbol,
+                            railroad: train.railroad.displayName,
+                            miles: miles,
+                            moreCount: nearby.count - 1
+                        )
+                    }
+                    finish()
+                }
+            },
+            onError: { _ in
+                Task { @MainActor in finish() }
+            }
+        )
     }
 
     // ── Auto-refresh timer ────────────────────────────────────────────────────
@@ -686,10 +737,19 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         for region in locationManager.monitoredRegions {
             locationManager.stopMonitoring(for: region)
         }
-        // Register one per saved location (1-mile radius)
-        for loc in savedLocations {
+        // Register one per saved location (300 m, matching Android). iOS monitors at most 20
+        // regions per app, so keep the 20 nearest to the user's last known position.
+        var spots = savedLocations
+        if let here = userLocation {
+            let hereCL = CLLocation(latitude: here.latitude, longitude: here.longitude)
+            spots.sort {
+                hereCL.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <
+                hereCL.distance(from: CLLocation(latitude: $1.latitude, longitude: $1.longitude))
+            }
+        }
+        for loc in spots.prefix(20) {
             let center = CLLocationCoordinate2D(latitude: loc.latitude, longitude: loc.longitude)
-            let region = CLCircularRegion(center: center, radius: 1609.34, identifier: loc.id)
+            let region = CLCircularRegion(center: center, radius: 300, identifier: loc.id)
             region.notifyOnEntry = true
             region.notifyOnExit  = false
             locationManager.startMonitoring(for: region)

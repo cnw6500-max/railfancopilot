@@ -53,6 +53,26 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
         UNUserNotificationCenter.current().add(request)
     }
 
+    func sendSpotArrivalNotification(locationName: String, trainSymbol: String, railroad: String,
+                                     miles: Double, moreCount: Int) {
+        let title = "You're at \(locationName)"
+        let distance = miles < 1 ? "< 1 mile away" : "\(Int(miles.rounded())) miles away"
+        let more = moreCount > 0 ? " (+\(moreCount) more)" : ""
+        let body  = "\(trainSymbol) · \(railroad) · \(distance)\(more)"
+        AlertStore.shared.add(title: title, body: body)
+        guard isAuthorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body  = body
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "arrival-\(locationName)-\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
     func sendProximityNotification(locationName: String) {
         let title = "📍 You're near \(locationName)"
         let body  = "Great railfan spot — check the map for approaching trains!"

@@ -1,7 +1,10 @@
 # Changelog
 
-## 2.7.6 (Android, versionCode 53) — unreleased
+## 2.7.6 (Android versionCode 53 · iOS build 53) — unreleased
+iOS version and build number now track Android's versionName and versionCode.
+
 ### Saved-spot arrival alerts
+- iOS: saved-spot regions shrink from 1 mile to 300 m and are capped at the 20 nearest (iOS's per-app limit). Arriving now fetches trains within 25 miles and reports the nearest, instead of a generic "you're near" message; still opt-in via approach notifications for Pro users.
 - Each saved location is registered as an Android geofence (300 m, up to 100). Arriving at a spot, even with the app closed, runs a WorkManager job that fetches trains within 25 miles from the enabled feeds and notifies "You're at {spot}" with the nearest train. Geofences are re-registered on reboot and app update.
 - Removed the unused `LocationTrackingService` and the `FOREGROUND_SERVICE_LOCATION` permission; the background location disclosure now describes what the app actually does.
 
