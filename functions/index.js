@@ -1,6 +1,7 @@
 'use strict';
 
-const functions = require('firebase-functions');
+// 1st-gen API; since firebase-functions v6 the package root exports 2nd-gen instead
+const functions = require('firebase-functions/v1');
 const fetch = require('node-fetch');
 const admin = require('firebase-admin');
 
