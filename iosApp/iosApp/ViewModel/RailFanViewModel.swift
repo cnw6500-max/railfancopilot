@@ -167,11 +167,6 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isTimetableLoading = false
     @Published var timetableError: String? = nil
 
-    // ── Station departures ────────────────────────────────────────────────────
-    @Published var stationDepartures: [StationDepartureSwift] = []
-    @Published var isStationLoading = false
-    @Published var stationError: String? = nil
-
     // ── Trip logging (shared-KMM based; drives the live map indicator) ────────
     @Published var activeTrip: TripLogSwift? = nil
     @Published var completedTrips: [TripLogSwift] = []
@@ -198,17 +193,6 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // ── Transmission Log ──────────────────────────────────────────────────────
     @Published var transmissionLog: [TransmissionEntry] = []
-
-    // ── Trial ─────────────────────────────────────────────────────────────────
-    var isInTrial: Bool {
-        guard let start = UserDefaults.standard.object(forKey: "trialStartDate") as? Date else { return false }
-        return Date().timeIntervalSince(start) < 7 * 86400
-    }
-    var trialDaysLeft: Int {
-        guard let start = UserDefaults.standard.object(forKey: "trialStartDate") as? Date else { return 0 }
-        let remaining = 7 - Int(Date().timeIntervalSince(start) / 86400)
-        return max(0, remaining)
-    }
 
     // ── Approach Notifications ────────────────────────────────────────────────
     @Published var approachEtaThreshold: Int = 10
@@ -261,7 +245,6 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         isLoadingSettings = true
         defer { isLoadingSettings = false }
         let ud = UserDefaults.standard
-        isPremium        = ud.bool(forKey: "isPremium")
         showAmtrak       = ud.object(forKey: "showAmtrak")       == nil ? true : ud.bool(forKey: "showAmtrak")
         showCommuter     = ud.object(forKey: "showCommuter")     == nil ? true : ud.bool(forKey: "showCommuter")
         showFreight      = ud.object(forKey: "showFreight")      == nil ? true : ud.bool(forKey: "showFreight")
@@ -966,39 +949,6 @@ class RailFanViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func clearTimetable() { timetableStops = []; timetableError = nil }
 
-    // ── Station departures ────────────────────────────────────────────────────
-    func loadStationDepartures(code: String) {
-        guard !code.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        isStationLoading = true
-        stationError = nil
-        stationDepartures = []
-        let upper = code.uppercased()
-        Task {
-            do {
-                let url = URL(string: "https://api.amtraker.com/v3/stations/\(upper)")!
-                let (data, _) = try await URLSession.shared.data(from: url)
-                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let allTrains = json?.values.compactMap { $0 as? [[String: Any]] }.flatMap { $0 } ?? []
-                stationDepartures = allTrains.map { t in
-                    let stations = (t["stations"] as? [[String: Any]] ?? []).map { TimetableStopSwift(json: $0) }
-                    return StationDepartureSwift(
-                        symbol:    "Amtrak #\(t["trainNum"] as? String ?? "")",
-                        routeName: t["routeName"] as? String ?? "",
-                        stops:     stations
-                    )
-                }.sorted {
-                    let a = $0.stops.first { $0.code == upper }?.scheduledDeparture ?? "99:99"
-                    let b = $1.stops.first { $0.code == upper }?.scheduledDeparture ?? "99:99"
-                    return a < b
-                }
-                if stationDepartures.isEmpty { stationError = "No trains found for \"\(upper)\"" }
-            } catch {
-                stationError = "Couldn't load departures — check your connection"
-            }
-            isStationLoading = false
-        }
-    }
-
     // ── Trip logging ──────────────────────────────────────────────────────────
     func startTrip(train: TrainLocation, boardingStation: String? = nil) {
         guard activeTrip == nil else { return }
@@ -1213,13 +1163,6 @@ struct TimetableStopSwift: Identifiable {
         actualArrival      = fmt(json["arr"]    as? String)
         actualDeparture    = fmt(json["dep"]    as? String)
     }
-}
-
-struct StationDepartureSwift: Identifiable {
-    let id = UUID()
-    let symbol: String
-    let routeName: String
-    let stops: [TimetableStopSwift]
 }
 
 private extension Optional where Wrapped == String {
